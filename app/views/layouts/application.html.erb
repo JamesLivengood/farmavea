@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= content_for(:title) || "Farmavea" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Farmavea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <%= render "layouts/meta_tags" %>
+
+    <%= yield :head %>
+
+    <%# Enable PWA manifest for installable apps (make sure to enable in config/routes.rb too!) %>
+    <%#= tag.link rel: "manifest", href: pwa_manifest_path(format: :json) %>
+
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <%# Includes all stylesheet files in app/assets/stylesheets %>
+    <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body class="bg-slate-50 text-slate-900 antialiased">
+    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div class="container mx-auto px-5 py-4 flex items-center gap-6">
+        <%= link_to root_path, class: "flex items-center gap-2 shrink-0" do %>
+          <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-600 text-white font-bold text-sm">Fv</span>
+          <span class="text-lg font-extrabold tracking-tight text-slate-900">Farmavea</span>
+        <% end %>
+        <%= form_with url: search_path, method: :get, class: "flex-1 max-w-lg",
+              data: { controller: "search-history", search_history_url_value: autocomplete_path, action: "submit->search-history#recordSearch" } do |f| %>
+          <div class="relative">
+            <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" />
+            </svg>
+            <%= f.text_field :q, value: params[:q], placeholder: "Buscar medicamento (marca o genérico)…",
+                  autocomplete: "off",
+                  data: { search_history_target: "input", action: "focus->search-history#onFocus input->search-history#onInput" },
+                  class: "w-full border border-slate-200 bg-slate-50 rounded-full pl-10 pr-4 py-2.5 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-colors" %>
+            <div data-search-history-target="menu" hidden
+                 class="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-xl border border-slate-200 shadow-lg shadow-slate-900/5 py-1.5 max-h-80 overflow-y-auto z-20"></div>
+          </div>
+        <% end %>
+      </div>
+    </header>
+    <main class="container mx-auto px-5 py-10">
+      <%= yield %>
+    </main>
+    <footer class="container mx-auto px-5 py-10 text-center text-xs text-slate-400">
+      <p>Farmavea compara precios públicos entre farmacias en línea. No sustituye la asesoría de un profesional de la salud.</p>
+      <p class="mt-2">
+        <%= link_to "Aviso de privacidad", privacy_path, class: "hover:text-emerald-600 transition-colors underline underline-offset-2" %>
+      </p>
+    </footer>
+  </body>
+</html>

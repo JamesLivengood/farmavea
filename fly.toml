@@ -1,0 +1,52 @@
+app = "farmacompara"
+primary_region = "dfw"
+
+[build]
+
+[env]
+  RAILS_ENV = "production"
+  RAILS_LOG_TO_STDOUT = "true"
+  RAILS_SERVE_STATIC_FILES = "true"
+  HTTP_PORT = "8080"
+  # Runs the Solid Queue worker and its recurring scheduler inside the Puma
+  # process, which is what actually executes background jobs - without it the
+  # daily crawl in config/recurring.yml is scheduled but never runs. In-Puma
+  # rather than a separate machine keeps this to the one always-on VM.
+  #
+  # Safe to run unattended because DailyPriceUpdateJob only CRAWLS: it passes
+  # aggregate: false, so nothing calls the paid Claude API on a schedule.
+  SOLID_QUEUE_IN_PUMA = "true"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # Keep one machine warm. With 0, Fly stops the machine after a few idle minutes
+  # and the next visitor waits for a cold boot - measured at ~22 SECONDS, of which
+  # only ~0.5s was Rails; the rest was Fly starting the VM. Warm requests are
+  # ~300ms. At low traffic almost every visitor would hit that cold start, which
+  # reads as "the site is broken" rather than "the site is slow".
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  # 512mb was not enough once SOLID_QUEUE_IN_PUMA was turned on: Puma plus the
+  # Solid Queue supervisor, dispatcher, worker and scheduler all share this
+  # machine, and the app started failing its own /up health check (and SSH hung),
+  # which is memory starvation rather than a slow query.
+  #
+  # 2gb because the nightly crawl also runs here: the app idles around 535MB and
+  # headless Chrome was measured at ~573MB while crawling, so 1gb left no room and
+  # the crawl would OOM the web server along with it.
+  memory = "2gb"
+
+[checks]
+  [checks.health]
+    port = 8080
+    type = "http"
+    interval = "10s"
+    timeout = "2s"
+    grace_period = "30s"
+    path = "/up"

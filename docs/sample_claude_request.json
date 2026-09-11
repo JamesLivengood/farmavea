@@ -1,0 +1,115 @@
+{
+  "model": "claude-opus-5",
+  "max_tokens": 16000,
+  "thinking": {
+    "type": "adaptive"
+  },
+  "tools": [
+    {
+      "name": "record_medication_matches",
+      "description": "Record the canonical medication behind each scraped pharmacy product name.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "raw_name": {
+                  "type": "string",
+                  "description": "The exact product name as given in the input list."
+                },
+                "canonical_name": {
+                  "type": "string",
+                  "description": "The generic/active-ingredient name of the medication in Spanish, e.g. 'Paracetamol', 'Losartan'. Use the same canonical_name for every product that contains the same active ingredient, regardless of brand."
+                },
+                "strength_value": {
+                  "type": "number",
+                  "description": "The numeric strength of a single unit (tablet/capsule/mL), e.g. 500 for a 500mg tablet. Null if it cannot be determined."
+                },
+                "strength_unit": {
+                  "type": "string",
+                  "enum": [
+                    "mg",
+                    "mcg",
+                    "g",
+                    "ml",
+                    "unit"
+                  ],
+                  "description": "Unit for strength_value. Use 'unit' only if the product has no meaningful mg/mcg/mL strength (e.g. a device)."
+                },
+                "form": {
+                  "type": "string",
+                  "enum": [
+                    "tablet",
+                    "capsule",
+                    "ml",
+                    "gram",
+                    "unit"
+                  ],
+                  "description": "Dosage form category."
+                },
+                "pack_quantity": {
+                  "type": "integer",
+                  "description": "Number of tablets/capsules in the package, or null if not a discrete-unit form (e.g. syrup)."
+                },
+                "confidence": {
+                  "type": "number",
+                  "description": "0.0-1.0 confidence in this extraction."
+                },
+                "matched_existing_canonical_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "If this medication matches one of the EXISTING_MEDICATIONS given in the prompt (same active ingredient AND strength), copy its canonical_name exactly here. Otherwise null."
+                }
+              },
+              "required": [
+                "raw_name",
+                "canonical_name",
+                "strength_unit",
+                "form",
+                "confidence"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "matches"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  ],
+  "tool_choice": {
+    "type": "tool",
+    "name": "record_medication_matches"
+  },
+  "system": [
+    {
+      "type": "text",
+      "text": "You are a pharmacology data-normalization assistant for a Mexican medication\nprice-comparison service. You will be given raw product names scraped from a\npharmacy e-commerce website in Mexico. For each name, identify the underlying\nmedication: its generic/active-ingredient name, strength, unit, and dosage form.\n\nRules:\n- canonical_name must be the ACTIVE INGREDIENT (generic name), never the brand.\n  E.g. \"Tylenol 500mg\" and \"Panadol 500mg\" both have canonical_name \"Paracetamol\".\n- Use the exact same canonical_name spelling/casing for the same active ingredient\n  every time so records can be grouped reliably.\n- If a product combines multiple active ingredients, use the combination name\n  commonly used in Mexican pharmacies (e.g. \"Paracetamol/Cafeina/Ácido acetilsalicílico\"),\n  consistently.\n- Extract the per-unit strength (per tablet/capsule/mL), not the total package amount.\n- If you cannot confidently determine the medication, still return your best guess\n  with a low confidence score rather than omitting the item.\n- Check the EXISTING_MEDICATIONS list first. If a name matches one already there\n  (same active ingredient AND same strength), set matched_existing_canonical_name\n  to that exact canonical_name so we reuse the existing record instead of creating\n  a duplicate.\n",
+      "cache_control": { "type": "ephemeral" }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "EXISTING_MEDICATIONS (canonical_name, strength_value, strength_unit):\n- Butilhioscina, 10.0, mg\n- Celecoxib, 200.0, mg\n- Quetiapina, 50.0, mg\n- Ibuprofeno, 200.0, mg\n- Paracetamol/Cafeina/Ácido acetilsalicílico, 250.0, mg\n- Paracetamol/Tramadol, 325.0, mg\n- Citidina monofosfato/Uridina trifosfato, 5.0, mg\n- Venlafaxina, 75.0, mg\n- Omeprazol, 20.0, mg\n- Ketorolaco, 30.0, mg\n- Serrapeptasa, 10.0, mg\n- Estradiol, 1.0, mg\n- Melatonina, 5.0, mg\n- Pregabalina, 150.0, mg\n- Loratadina, 10.0, mg\n- Fluoxetina, 20.0, mg\n- Montelukast, 10.0, mg\n- Esomeprazol, 40.0, mg\n- Sildenafil, 100.0, mg\n- Levocetirizina, 5.0, mg\n- Ibuprofeno, 600.0, mg\n- Escitalopram, 10.0, mg\n- Pregabalina, 75.0, mg\n- Sertralina, 50.0, mg\n- Quetiapina, 100.0, mg\n",
+          "cache_control": { "type": "ephemeral" }
+        },
+        {
+          "type": "text",
+          "text": "PRODUCT_NAMES scraped from Farmacia del Ahorro:\n- Ibuprofeno 200 mg 10 cápsulas Marca del Ahorro\n- Weicop 200 mg 30 tabs\n- Kuryent 100 mg 28 tabs\n- Him Caps 2 cápsulas\n- Danzen 10 mg, 20 Tabletas.\n- Núcleo C.M.P. Forte 5mg/3mg, 30 Cápsulas.\n- Paracetamol / Tramadol 325/37.5 mg 20 tabletas Marca del Ahorro\n- Sertralina 50 mg, 28 Tabletas Pharmalife.\n- Omeprazol 20 mg, 120 Cápsulas Pharmalife.\n- Hioscina 10 mg Oral 10 tabletas Marca del Ahorro\n\nCall record_medication_matches with one entry per product name above.\n"
+        }
+      ]
+    }
+  ]
+}

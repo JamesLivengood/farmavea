@@ -1,0 +1,121 @@
+WHAT ACTUALLY GETS SENT TO CLAUDE — 10 REAL EXAMPLES
+======================================================
+
+These are 10 REAL product names, scraped live from Farmacia del Ahorro's
+website, exactly as they appeared in our database when this file was
+generated. This is the actual input, not a mockup.
+
+  1. Ibuprofeno 200 mg 10 cápsulas Marca del Ahorro
+  2. Weicop 200 mg 30 tabs
+  3. Kuryent 100 mg 28 tabs
+  4. Him Caps 2 cápsulas
+  5. Danzen 10 mg, 20 Tabletas.
+  6. Núcleo C.M.P. Forte 5mg/3mg, 30 Cápsulas.
+  7. Paracetamol / Tramadol 325/37.5 mg 20 tabletas Marca del Ahorro
+  8. Sertralina 50 mg, 28 Tabletas Pharmalife.
+  9. Omeprazol 20 mg, 120 Cápsulas Pharmalife.
+  10. Hioscina 10 mg Oral 10 tabletas Marca del Ahorro
+
+Notice #2, #3, #4, #5, #6: these are brand names ("Weicop", "Kuryent",
+"Him Caps", "Danzen", "Núcleo C.M.P.") that don't say what drug they
+actually are anywhere in the name. That's the whole point of sending this
+to Claude — a plain keyword/string match has nothing to go on for these;
+Claude already knows what each brand actually contains.
+
+
+WHAT CLAUDE ALREADY KNOWS (sent alongside, so it reuses existing records
+instead of creating duplicates for a drug we've already seen before):
+======================================================
+  Butilhioscina, 10mg | Celecoxib, 200mg | Quetiapina, 50mg | Quetiapina, 100mg
+  Ibuprofeno, 200mg | Ibuprofeno, 600mg | Paracetamol/Cafeina/Ácido
+  acetilsalicílico, 250mg | Paracetamol/Tramadol, 325mg | Venlafaxina, 75mg
+  Omeprazol, 20mg | Ketorolaco, 30mg | Sildenafil, 100mg | Sertralina, 50mg
+  Escitalopram, 10mg | Pregabalina, 75mg | Pregabalina, 150mg
+  Montelukast, 10mg | Esomeprazol, 40mg | Fluoxetina, 20mg | Loratadina, 10mg
+  Levocetirizina, 5mg | Melatonina, 5mg | Estradiol, 1mg | Serrapeptasa, 10mg
+  Citidina monofosfato/Uridina trifosfato, 5mg
+
+
+WHAT CLAUDE IS ASKED TO RETURN, PER PRODUCT NAME ABOVE:
+======================================================
+  raw_name                        -> echoes back which input this row is for
+  canonical_name                  -> the actual drug, e.g. "Sildenafil"
+  strength_value + strength_unit  -> e.g. 100 + "mg"
+  form                            -> tablet / capsule / ml / gram / unit
+  pack_quantity                   -> e.g. 28 (tablets in the box)
+  confidence                      -> 0.0-1.0, how sure Claude is
+  matched_existing_canonical_name -> if it's the same drug+strength as
+                                      something in the "already known" list
+                                      above, points to that so we don't
+                                      create a duplicate
+
+REAL, VERIFIED result currently stored in our database for this exact
+batch (pulled live from the DB when this file was written, not
+re-generated or estimated for this doc):
+
+  Ibuprofeno 200 mg 10 cápsulas Marca del Ahorro                     -> Ibuprofeno, 200mg, capsule
+  Weicop 200 mg 30 tabs                                              -> Celecoxib, 200mg, tablet
+  Kuryent 100 mg 28 tabs                                             -> Quetiapina, 100mg, tablet
+  Him Caps 2 cápsulas                                                -> Sildenafil, 100mg, tablet
+  Danzen 10 mg, 20 Tabletas.                                         -> Serrapeptasa, 10mg, tablet
+  Núcleo C.M.P. Forte 5mg/3mg, 30 Cápsulas.                          -> Citidina monofosfato/Uridina trifosfato, 5mg, capsule
+  Paracetamol / Tramadol 325/37.5 mg 20 tabletas Marca del Ahorro    -> Paracetamol/Tramadol, 325mg, tablet
+  Sertralina 50 mg, 28 Tabletas Pharmalife.                          -> Sertralina, 50mg, tablet
+  Omeprazol 20 mg, 120 Cápsulas Pharmalife.                          -> Omeprazol, 20mg, capsule
+  Hioscina 10 mg Oral 10 tabletas Marca del Ahorro                   -> Butilhioscina, 10mg, tablet
+
+These are all brand-to-generic decodes a keyword match couldn't do:
+  Weicop      -> Celecoxib (an anti-inflammatory)
+  Kuryent     -> Quetiapina (an antipsychotic)
+  Him Caps    -> Sildenafil
+  Danzen      -> Serrapeptasa (an anti-inflammatory enzyme)
+  Núcleo C.M.P. Forte -> Citidina monofosfato/Uridina trifosfato (nerve-repair
+                          combination — note it also decoded the "5mg/3mg" in
+                          the name down to a single per-unit strength, 5mg)
+  Hioscina    -> Butilhioscina (the two names are related but not identical -
+                 Claude correctly resolved this to the specific compound
+                 rather than treating "Hioscina" as its own separate drug)
+
+Known imperfection worth flagging: "Him Caps 2 cápsulas" gets tagged
+form=tablet even though the name literally says "cápsulas" [capsules].
+Form classification isn't perfect on ambiguous/brand-only names — this
+doesn't affect price-per-mg accuracy since form isn't used in that math,
+but it's the kind of small error rate to expect at scale.
+
+Note: requires_prescription isn't shown above because none of these 10
+have been re-crawled since we added that field. It's a real, working field
+now (scraped from Del Ahorro's "Requiere receta" attribute) - it just
+doesn't get backfilled onto old records without a fresh crawl.
+
+
+WHAT CHANGED STRUCTURALLY (cost optimization, same inputs/outputs):
+======================================================
+The request body is now split into two separate text blocks instead of one:
+
+  Block 1: EXISTING_MEDICATIONS list       -> marked "cache this"
+  Block 2: PRODUCT_NAMES for this batch    -> NOT cached, always fresh
+
+Why: a single crawl sends many batches back-to-back (roughly one call per
+75 product names). The EXISTING_MEDICATIONS list is identical across every
+batch in that run, but the product names are different each time. Before
+this change, both were glued into one block, so the whole thing had to be
+re-sent and re-paid-for on every single batch. Now, only the first batch
+of a run pays full price for the EXISTING_MEDICATIONS list - every batch
+after that reads it from cache for a fraction of the cost, and only the
+small, always-new product-names block is paid in full each time.
+
+Verified on a real 2-batch test run:
+  Batch 1: 92 tokens billed normally, 659 tokens written to cache
+  Batch 2: 91 tokens billed normally, 2028 tokens read FROM cache (free-ish)
+
+Nothing about what gets sent or what Claude returns changed - same 10
+names above, same verified results. This only changes how the request is
+packaged so repeated content isn't paid for repeatedly within one crawl.
+
+
+FULL RAW REQUEST (schema + system prompt), FOR REFERENCE:
+======================================================
+See sample_claude_request.json in this same folder for the exact JSON body
+sent to the API (model, tool schema, system prompt, and the same 10 names
+above formatted as the real request payload, now showing the two-block
+structure and cache_control markers described above).

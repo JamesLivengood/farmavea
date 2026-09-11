@@ -1,0 +1,18 @@
+#!/bin/bash -e
+
+# If running the rails server then create or migrate existing database
+if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
+  ./bin/rails db:prepare
+  # Solid Cache/Queue/Cable tables live in the single primary database for this
+  # deploy (see config/database.yml) rather than separate databases, so their
+  # schemas aren't loaded by db:prepare automatically - load each one once.
+  ./bin/rails runner '
+    marker_tables = { "cache" => "solid_cache_entries", "queue" => "solid_queue_jobs", "cable" => "solid_cable_messages" }
+    marker_tables.each do |name, table|
+      next if ActiveRecord::Base.connection.table_exists?(table)
+      load(Rails.root.join("db/#{name}_schema.rb"))
+    end
+  '
+fi
+
+exec "${@}"

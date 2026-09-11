@@ -1,0 +1,17 @@
+{
+  "ignored_warnings": [
+    {
+      "warning_type": "SSL Verification Bypass",
+      "warning_code": 71,
+      "fingerprint": "dcd646b7427ff8276952fb9b2086b2167b6cca1dbdd6984d21f486701d2a0889",
+      "check_name": "SSLVerify",
+      "message": "SSL certificate verification was bypassed",
+      "file": "app/services/crawlers/farmacia_emergencias_crawler.rb",
+      "line": 42,
+      "link": "https://brakemanscanner.org/docs/warning_types/ssl_verification_bypass/",
+      "note": "Farmacia Emergencias (farmaciaemergencias.com.mx) serves a broken SSL certificate chain (self-signed intermediate) - confirmed via live investigation, not a configuration mistake on our end. Net::HTTP refuses to connect at all without disabling verification. Accepted deliberately: this fetches only public product/price listings (no credentials, no sensitive data sent or received), and this is the only crawler where verification is disabled - every other crawler in the codebase verifies certificates normally. Revisit if the site ever fixes its certificate."
+    }
+  ],
+  "updated": "2026-09-01 00:00:00 -0600",
+  "brakeman_version": "8.0.6"
+}

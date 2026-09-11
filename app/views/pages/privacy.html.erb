@@ -1,0 +1,111 @@
+<%# Aviso de privacidad. Describes what this site ACTUALLY does - the tracking in
+    TracksPageVisits, the crawlers, and nothing more. If the tracking changes, this
+    has to change with it, or it becomes a false statement rather than a notice. %>
+<% content_for :title, "Aviso de privacidad — Farmavea" %>
+<% content_for :meta_description, "Cómo Farmavea maneja la información de quienes visitan el sitio." %>
+
+<%= link_to root_path, class: "inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-emerald-700 transition-colors mb-4 py-2 px-1 -ml-1" do %>
+  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+  </svg>
+  Volver
+<% end %>
+
+<article class="max-w-2xl">
+  <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">Aviso de privacidad</h1>
+  <%# A fixed date, not Date.current: this should show when the notice last
+      actually changed, not today's date on every page load - a notice that always
+      claims to be updated today tells the reader nothing. Update it by hand when
+      the notice changes. %>
+  <p class="text-slate-500 mt-2">Última actualización: <%= spanish_date(PagesController::PRIVACY_LAST_UPDATED) %></p>
+
+  <div class="mt-8 space-y-8 text-slate-700 leading-relaxed">
+    <section>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">Qué es Farmavea</h2>
+      <p>
+        Farmavea compara precios de medicamentos publicados en los sitios web de
+        farmacias en México. No vendemos medicamentos, no procesamos pagos y no
+        tenemos cuentas de usuario.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">No pedimos datos personales</h2>
+      <p>
+        Este sitio no tiene registro ni inicio de sesión. Nunca te pedimos tu
+        nombre, correo electrónico, teléfono, dirección ni datos de pago, y no
+        recopilamos esa información por ningún otro medio.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">Qué registramos</h2>
+      <p class="mb-3">
+        Para entender qué medicamentos busca la gente y mejorar el sitio,
+        guardamos un registro anónimo de las páginas visitadas. De cada visita
+        guardamos únicamente:
+      </p>
+      <ul class="list-disc pl-5 space-y-1.5">
+        <li>La página visitada y, en su caso, el término buscado.</li>
+        <li>El tipo de dispositivo (teléfono, tablet o computadora) y el navegador.</li>
+        <li>El sitio desde el que llegaste, solo el dominio (por ejemplo,
+          <span class="font-mono text-sm">google.com</span>), nunca la dirección completa.</li>
+        <li>La fecha y hora.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">No guardamos tu dirección IP</h2>
+      <p>
+        En lugar de guardar tu dirección IP, generamos un identificador cifrado de
+        un solo sentido que no puede revertirse para identificarte. Ese
+        identificador cambia todos los días, por lo que no es posible seguir tu
+        actividad de un día a otro ni construir un historial de las búsquedas de
+        una persona.
+      </p>
+      <p class="mt-3">
+        Lo hacemos así a propósito: las búsquedas de medicamentos pueden revelar
+        información sobre la salud de una persona, y consideramos que ese tipo de
+        información no debe conservarse de forma que pueda vincularse a alguien.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">No compartimos ni vendemos información</h2>
+      <p>
+        No vendemos, rentamos ni compartimos esta información con terceros. No
+        usamos publicidad ni rastreadores de terceros, y no utilizamos cookies con
+        fines publicitarios ni de seguimiento.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">De dónde vienen los precios</h2>
+      <p>
+        Los precios se obtienen de los catálogos públicos de los sitios web de las
+        farmacias. No tenemos relación comercial con ellas y no podemos confirmar
+        la disponibilidad de los productos. Consulta directamente con la farmacia
+        antes de acudir.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">Tus derechos</h2>
+      <p>
+        La Ley Federal de Protección de Datos Personales en Posesión de los
+        Particulares reconoce tus derechos de acceso, rectificación, cancelación y
+        oposición (derechos ARCO). Dado que no conservamos información que permita
+        identificarte, normalmente no tenemos datos personales tuyos que consultar
+        o eliminar. Si tienes dudas, puedes escribirnos.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">Cambios a este aviso</h2>
+      <p>
+        Si cambiamos lo que registramos, actualizaremos esta página junto con el
+        cambio.
+      </p>
+    </section>
+  </div>
+</article>

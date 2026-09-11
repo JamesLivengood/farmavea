@@ -1,0 +1,44 @@
+<% content_for :title, "Buscar “#{@query}” — Farmavea" %>
+<% content_for :meta_description,
+     "Resultados para “#{@query}”: compara precios entre farmacias en #{@city} y encuentra la opción más barata." %>
+
+<div class="mb-8">
+  <h1 class="text-2xl font-bold text-slate-900">
+    Resultados para <span class="text-emerald-700">“<%= @query %>”</span>
+  </h1>
+  <% unless @query.blank? || @medications.empty? %>
+    <p class="text-slate-500 text-sm mt-1"><%= pluralize(@medications.size, "medicamento encontrado", plural: "medicamentos encontrados") %></p>
+  <% end %>
+</div>
+
+<% if @query.blank? %>
+  <div class="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500">
+    Escribe el nombre de un medicamento, ya sea de marca o genérico.
+  </div>
+<% elsif @medications.empty? %>
+  <div class="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center">
+    <p class="text-slate-500">No encontramos ningún medicamento que coincida con “<%= @query %>”.</p>
+    <p class="text-slate-400 text-sm mt-1">Intenta con el nombre genérico o el ingrediente activo.</p>
+  </div>
+<% else %>
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <% @medications.each do |medication| %>
+      <%= link_to medication_path(medication), class: "group block bg-white rounded-xl border border-slate-200 p-5 hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-900/5 transition-all" do %>
+        <p class="font-semibold text-slate-900 group-hover:text-emerald-700 transition-colors"><%= medication.display_strength %></p>
+        <% if (brand = @matched_brands[medication.id]) && !medication.canonical_name.downcase.include?(brand.downcase) %>
+          <p class="text-xs text-slate-500 mt-0.5">Marca: <%= brand %></p>
+        <% end %>
+        <% cheapest = @cheapest_by_medication_id[medication.id] %>
+        <p class="text-sm mt-1.5">
+          <% if cheapest %>
+            <span class="text-slate-500">Desde</span>
+            <span class="font-semibold text-emerald-700"><%= format_price_per_mg(cheapest) %></span>
+            <span class="text-slate-500">hoy</span>
+          <% else %>
+            <span class="text-slate-400">Sin precios disponibles hoy en <%= @city %></span>
+          <% end %>
+        </p>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>
