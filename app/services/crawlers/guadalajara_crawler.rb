@@ -11,8 +11,14 @@ module Crawlers
       "/farmacia/medicina"
     ].freeze
 
-    MAX_PAGES_PER_CATEGORY = ENV.fetch("GUADALAJARA_MAX_PAGES", 20).to_i
-    PAGE_SIZE = 20
+    # The category reports ~3,580 products. At 20 pages x 20 per page the crawler
+    # stopped at exactly 400 and reported the other 3,180 as "disappeared" - the cap
+    # was the limit, not the catalogue. The loop already stops on its own when a page
+    # yields nothing new, so this only needs to be high enough not to bind first.
+    MAX_PAGES_PER_CATEGORY = ENV.fetch("GUADALAJARA_MAX_PAGES", 120).to_i
+    # The grid serves 40 tiles per request even when sz=20 is asked for, so paging by
+    # 20 re-read the first half of each page and skipped the second half entirely.
+    PAGE_SIZE = 40
 
     private
 

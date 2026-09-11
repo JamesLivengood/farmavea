@@ -18,6 +18,13 @@ module Crawlers
 
     private
 
+    # A transient failure must not look like the end of the catalogue. Retry a failed
+    # page before believing it, and raise rather than silently returning a partial
+    # catalogue: a short crawl reports every missing product as "disappeared", which
+    # is worse than a visible failure. Observed on farmacias_abc, where one bad page
+    # at ~60 truncated the run and made 2,219 real products look discontinued.
+    PAGE_RETRIES = 3
+
     def fetch_listings
       (1..MAX_PAGES).each_with_object([]) do |page_number, results|
         products = fetch_page(page_number)
@@ -27,15 +34,26 @@ module Crawlers
       end
     end
 
+    # Returns [] ONLY when the site genuinely reports no more products.
     def fetch_page(page_number)
       url = "#{base_url}#{products_json_path}?page=#{page_number}&limit=#{PRODUCTS_PER_PAGE}"
-      body = fetch_json(url)
-      return [] if body.nil?
 
-      body["products"] || []
-    rescue StandardError => e
-      Rails.logger.warn("[#{self.class.name}] page #{page_number} failed: #{e.message}")
-      []
+      last_error = nil
+      PAGE_RETRIES.times do |attempt|
+        sleep(2**attempt) if attempt.positive? # 1s, 2s - back off before retrying
+        begin
+          body = fetch_json(url)
+          return body["products"] || [] unless body.nil?
+
+          last_error = "no parseable body"
+        rescue StandardError => e
+          last_error = "#{e.class}: #{e.message}"
+        end
+      end
+
+      raise CrawlError,
+            "#{self.class.name}: page #{page_number} failed after #{PAGE_RETRIES} attempts (#{last_error}). " \
+            "Stopping rather than reporting the rest of the catalogue as missing."
     end
 
     def fetch_json(url)

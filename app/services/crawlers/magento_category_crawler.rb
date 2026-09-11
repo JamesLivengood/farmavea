@@ -13,7 +13,10 @@ module Crawlers
   # often just a CMS landing page, not a real paginated grid, so the real
   # subcategory paths must be discovered per site).
   class MagentoCategoryCrawler < BaseCrawler
-    MAX_PAGES_PER_CATEGORY = ENV.fetch("MAGENTO_MAX_PAGES", 40).to_i
+    # 40 was binding rather than protective: fesa stopped at exactly 40 pages x 20
+    # items = 800 and reported the remaining 306 known products as disappeared. The
+    # loop exits on its own when a page is empty, so this is only a runaway guard.
+    MAX_PAGES_PER_CATEGORY = ENV.fetch("MAGENTO_MAX_PAGES", 150).to_i
 
     private
 
@@ -27,9 +30,13 @@ module Crawlers
                     .uniq { |item| item[:product_url] || item[:raw_name] }
     end
 
+    PAGE_RETRIES = 3
+
     def scrape_category(path)
       (1..MAX_PAGES_PER_CATEGORY).each_with_object([]) do |page_number, results|
-        html = fetch_html("#{base_url}#{path}?p=#{page_number}")
+        html = fetch_category_page(path, page_number)
+        # A genuinely empty page means the category is exhausted; a failed fetch
+        # raises instead, so a network blip is never mistaken for the end.
         break results if html.blank?
 
         doc = Nokogiri::HTML(html)
@@ -41,9 +48,24 @@ module Crawlers
 
         results.concat(items.filter_map { |item| extract_listing(item) })
       end
-    rescue StandardError => e
-      Rails.logger.warn("[#{self.class.name}] category #{path} failed: #{e.message}")
-      []
+    end
+
+    # Retries before accepting a failure. Previously any error here returned [] for
+    # the whole category, which silently reported every product in it as gone.
+    def fetch_category_page(path, page_number)
+      last_error = nil
+
+      PAGE_RETRIES.times do |attempt|
+        sleep(2**attempt) if attempt.positive?
+        begin
+          return fetch_html("#{base_url}#{path}?p=#{page_number}")
+        rescue StandardError => e
+          last_error = "#{e.class}: #{e.message}"
+        end
+      end
+
+      raise CrawlError,
+            "#{self.class.name}: #{path} page #{page_number} failed after #{PAGE_RETRIES} attempts (#{last_error})."
     end
 
     def fetch_html(url)

@@ -101,5 +101,58 @@ module Crawlers
 
       assert_equal 0, count
     end
+
+    # Serves real pages but raises on one of them, the way a timeout or a dropped
+    # connection does mid-crawl.
+    class FlakyMagentoCrawler < FakeMagentoCrawler
+      def initialize(pharmacy:, crawl_run:, pages:, fail_on:)
+        super(pharmacy: pharmacy, crawl_run: crawl_run, pages: pages)
+        @fail_on = fail_on
+        @attempts = Hash.new(0)
+      end
+
+      attr_reader :attempts
+
+      private
+
+      def fetch_html(url)
+        path = url.delete_prefix(base_url)
+        @attempts[path] += 1
+        raise Net::ReadTimeout, "simulated" if path == @fail_on
+
+        super
+      end
+    end
+
+    # The bug this guards: a failed fetch returned blank, the loop read that as "no
+    # more products", and every product on the later pages was reported as gone.
+    # Observed on fesa and farmacias_abc - 2,219 real products looked discontinued.
+    test "a page that keeps failing raises instead of silently truncating the catalogue" do
+      pharmacy = create_pharmacy
+      pages = {
+        "/dolor?p=1" => "<ul>#{product_html('Paracetamol 500mg', '20.00', 'https://example.invalid/a')}</ul>",
+        "/dolor?p=2" => "<ul>#{product_html('Ibuprofeno 400mg', '30.00', 'https://example.invalid/b')}</ul>",
+        "/dolor?p=3" => "<ul></ul>"
+      }
+      crawler = FlakyMagentoCrawler.new(pharmacy: pharmacy, crawl_run: create_crawl_run(pharmacy: pharmacy),
+                                        pages: pages, fail_on: "/dolor?p=2")
+
+      error = assert_raises(BaseCrawler::CrawlError) { crawler.call }
+
+      assert_match(/page 2 failed after 3 attempts/, error.message)
+      assert_equal 3, crawler.attempts["/dolor?p=2"], "should retry before giving up"
+    end
+
+    test "a genuinely empty page still ends the category normally" do
+      pharmacy = create_pharmacy
+      pages = {
+        "/dolor?p=1" => "<ul>#{product_html('Paracetamol 500mg', '20.00', 'https://example.invalid/a')}</ul>",
+        "/dolor?p=2" => "<ul></ul>"
+      }
+
+      count = FakeMagentoCrawler.new(pharmacy: pharmacy, crawl_run: create_crawl_run(pharmacy: pharmacy), pages: pages).call
+
+      assert_equal 1, count
+    end
   end
 end
