@@ -28,11 +28,40 @@ class NormalizeAndBuildOffersJob < ApplicationJob
 
   private
 
+  # A crawl that found far less than the previous one is nearly always truncated -
+  # a WAF blocking partway, a page that stopped rendering, a site layout change.
+  # Deactivating on that basis removes products that are still for sale.
+  MIN_COVERAGE_TO_DEACTIVATE = 0.5
+
   # Today's fresh offers for this pharmacy/city should replace yesterday's -
   # otherwise a medication that's gone out of stock keeps showing as "cheapest".
+  # But only when this crawl actually covered the catalogue: see above.
   def deactivate_stale_offers(crawl_run)
+    unless broad_enough_to_deactivate?(crawl_run)
+      Rails.logger.warn(
+        "[NormalizeAndBuildOffersJob] crawl_run##{crawl_run.id} (#{crawl_run.pharmacy.slug}) found " \
+        "#{crawl_run.raw_listings.count} listings, well under the previous run - keeping existing " \
+        "offers active rather than deactivating products that are probably still for sale."
+      )
+      return
+    end
+
     Offer.where(pharmacy_id: crawl_run.pharmacy_id, city: crawl_run.city)
          .where.not(raw_listing_id: crawl_run.raw_listing_ids)
          .update_all(active: false)
+  end
+
+  def broad_enough_to_deactivate?(crawl_run)
+    current = crawl_run.raw_listings.count
+    return false if current.zero?
+
+    previous = CrawlRun.where(pharmacy_id: crawl_run.pharmacy_id)
+                       .where.not(id: crawl_run.id)
+                       .where(id: RawListing.select(:crawl_run_id).distinct)
+                       .order(created_at: :desc)
+                       .first
+    return true if previous.nil? # nothing to compare against - first real crawl
+
+    current >= previous.raw_listings.count * MIN_COVERAGE_TO_DEACTIVATE
   end
 end

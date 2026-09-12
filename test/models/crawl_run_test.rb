@@ -35,4 +35,29 @@ class CrawlRunTest < ActiveSupport::TestCase
     assert_not crawl_run.valid?
     assert_includes crawl_run.errors[:status], "is not included in the list"
   end
+
+  # Del Ahorro's nightly job ran for days against a sitemap whose URLs had all
+  # started 404ing, persisted nothing each time, and reported "succeeded" - so the
+  # breakage never surfaced anywhere.
+  test "a crawl that persisted nothing is marked failed, not succeeded" do
+    pharmacy = create_pharmacy
+    crawl_run = CrawlRun.create!(pharmacy: pharmacy, city: "Morelia, Michoacán", status: "running")
+
+    crawl_run.mark_succeeded!
+
+    assert_equal "failed", crawl_run.reload.status
+    assert_equal 0, crawl_run.items_found
+    assert_match(/persisted no listings/, crawl_run.error_message)
+  end
+
+  test "a crawl that persisted listings succeeds normally" do
+    pharmacy = create_pharmacy
+    crawl_run = CrawlRun.create!(pharmacy: pharmacy, city: "Morelia, Michoacán", status: "running")
+    create_raw_listing(pharmacy: pharmacy, crawl_run: crawl_run)
+
+    crawl_run.mark_succeeded!
+
+    assert_equal "succeeded", crawl_run.reload.status
+    assert_equal 1, crawl_run.items_found
+  end
 end
