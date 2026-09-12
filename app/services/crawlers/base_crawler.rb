@@ -42,7 +42,10 @@ module Crawlers
       Ferrum::Browser.new(
         headless: true,
         timeout: 30,
-        process_timeout: 30,
+        # Chrome can take well over 30s to come up when another crawl is still
+        # winding down or the machine is loaded, and a launch timeout fails the
+        # whole pharmacy. Waiting longer is far cheaper than losing a run.
+        process_timeout: 90,
         browser_path: detect_browser_path,
         browser_options: options,
         pending_connection_errors: false

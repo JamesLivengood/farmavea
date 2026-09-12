@@ -23,10 +23,15 @@ module Crawlers
     # catalogue: a short crawl reports every missing product as "disappeared", which
     # is worse than a visible failure. Observed on farmacias_abc, where one bad page
     # at ~60 truncated the run and made 2,219 real products look discontinued.
-    PAGE_RETRIES = 3
+    PAGE_RETRIES = 4
+    # farmacias_abc starts refusing requests around page 60 when pages are fetched
+    # back to back, then serves the same page fine on its own. That is rate limiting,
+    # so pace the requests rather than only retrying after being refused.
+    DELAY_BETWEEN_PAGES = 0.4
 
     def fetch_listings
       (1..MAX_PAGES).each_with_object([]) do |page_number, results|
+        sleep(DELAY_BETWEEN_PAGES) if page_number > 1
         products = fetch_page(page_number)
         break results if products.empty?
 
@@ -40,7 +45,9 @@ module Crawlers
 
       last_error = nil
       PAGE_RETRIES.times do |attempt|
-        sleep(2**attempt) if attempt.positive? # 1s, 2s - back off before retrying
+        # 3s, 9s, 27s - a throttle needs far longer to clear than a dropped
+        # connection, and the earlier 1s/2s backoff was too short to outlast one.
+        sleep(3**attempt) if attempt.positive?
         begin
           body = fetch_json(url)
           return body["products"] || [] unless body.nil?
@@ -61,7 +68,11 @@ module Crawlers
       request = Net::HTTP::Get.new(uri)
       request["User-Agent"] = USER_AGENT
       response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
-      return nil unless response.is_a?(Net::HTTPSuccess)
+      unless response.is_a?(Net::HTTPSuccess)
+        # Named in the error so a throttle (429) is distinguishable from a real
+        # missing page - "no parseable body" said nothing about which had happened.
+        raise CrawlError, "HTTP #{response.code} from #{url}"
+      end
       JSON.parse(response.body)
     rescue JSON::ParserError => e
       Rails.logger.warn("[#{self.class.name}] could not parse JSON from #{url}: #{e.message}")

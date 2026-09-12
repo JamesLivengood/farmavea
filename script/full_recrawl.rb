@@ -24,7 +24,12 @@ started_at = Time.current
 pharmacies.each do |pharmacy|
   # Previous prices, keyed by product URL, so the new crawl can be diffed against
   # them. Taken from the latest completed run BEFORE this one starts.
-  previous_run = CrawlRun.where(pharmacy: pharmacy).order(created_at: :desc).first
+  # Skip runs that produced nothing: a failed run would otherwise become the
+  # baseline and make every product in the next crawl look brand new.
+  previous_run = CrawlRun.where(pharmacy: pharmacy)
+                         .where(id: RawListing.select(:crawl_run_id).distinct)
+                         .order(created_at: :desc)
+                         .first
   previous_prices =
     if previous_run
       RawListing.where(crawl_run: previous_run)
