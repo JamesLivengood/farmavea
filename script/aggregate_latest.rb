@@ -11,6 +11,19 @@ latest_run_ids = CrawlRun.where(status: "succeeded")
 crawl_runs = CrawlRun.where(id: latest_run_ids).order(:id)
 puts "Processing #{crawl_runs.count} crawl runs (latest per pharmacy)"
 
+# This script runs the FULL matching pipeline, whose third tier is the paid Claude
+# API - it is not a free "rebuild offers from what we already know" pass. Say so up
+# front: running it after a crawl that discovered thousands of new products billed
+# ~$11 in one go, because every unseen name goes to the API.
+if ENV["ALLOW_CLAUDE_API"].present?
+  puts "!! ALLOW_CLAUDE_API is set - unmatched names WILL be sent to the paid API."
+  puts "!! Unmatched names across these runs: #{RawListing.where(crawl_run_id: latest_run_ids).left_joins(:offer).where(offers: { id: nil }).distinct.count(:raw_name)} (an upper bound; caches and the local matcher resolve many for free)"
+else
+  puts "Paid API tier is OFF (set ALLOW_CLAUDE_API=1 to enable)."
+  puts "Unmatched names will be left for script/export_for_manual_matching.rb."
+end
+puts ""
+
 # Built ONCE for this whole multi-pharmacy run and passed to every pharmacy's job,
 # so they all share one byte-identical cached prompt prefix instead of each
 # rebuilding (and cache-missing on) its own - see ClaudeMedicationMatcher's

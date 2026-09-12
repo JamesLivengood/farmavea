@@ -121,5 +121,44 @@ module Aggregation
       assert_equal 1, call_count
       assert_equal result[listing_a.id], result[listing_b.id]
     end
+
+    # The paid tier must never run just because a crawl found new products. An
+    # aggregation over 9,001 newly-discovered listings billed ~$11 unprompted -
+    # improving the crawler silently increased the bill.
+    test "the paid tier is skipped unless ALLOW_CLAUDE_API is set" do
+      pharmacy = create_pharmacy
+      # A name no cache or regex can resolve, so tier 3 is the only thing left.
+      listing = create_raw_listing(pharmacy: pharmacy, raw_name: "Kuryent Xyz 99")
+
+      original = ENV.delete("ALLOW_CLAUDE_API")
+      begin
+        result = MedicationNormalizer.new(pharmacy: pharmacy, raw_listings: [ listing ]).call
+
+        assert_nil result[listing.id], "an unresolvable name must stay unresolved, not reach the API"
+      ensure
+        ENV["ALLOW_CLAUDE_API"] = original if original
+      end
+    end
+
+    test "ALLOW_CLAUDE_API opts back in to the paid tier" do
+      pharmacy = create_pharmacy
+      listing = create_raw_listing(pharmacy: pharmacy, raw_name: "Kuryent Xyz 99")
+      called = false
+      client = fake_claude_client(lambda do |**_kwargs|
+        called = true
+        FakeClaudeResponse.with_matches([ { raw_name: "Kuryent Xyz 99", canonical_name: "Paracetamol",
+                                            strength_value: 500, strength_unit: "mg", confidence: 0.9 } ])
+      end)
+
+      original = ENV["ALLOW_CLAUDE_API"]
+      ENV["ALLOW_CLAUDE_API"] = "1"
+      begin
+        MedicationNormalizer.new(pharmacy: pharmacy, raw_listings: [ listing ], claude_client: client).call
+
+        assert called, "the paid tier should run when explicitly enabled"
+      ensure
+        original ? ENV["ALLOW_CLAUDE_API"] = original : ENV.delete("ALLOW_CLAUDE_API")
+      end
+    end
   end
 end

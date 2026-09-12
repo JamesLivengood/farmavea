@@ -57,11 +57,17 @@ module Aggregation
       persist_local_matches(locally_matched)
 
       names_for_claude = names_after_cache - locally_matched.keys
-      claude_matched = if names_for_claude.any?
+      claude_matched = if names_for_claude.any? && use_claude?
         matcher_args = { pharmacy: pharmacy, raw_names: names_for_claude, existing_medications_block: existing_medications_block }
         matcher_args[:client] = claude_client if claude_client
         ClaudeMedicationMatcher.new(**matcher_args).call
       else
+        if names_for_claude.any?
+          Rails.logger.info(
+            "[MedicationNormalizer] skipping the paid tier for #{names_for_claude.size} unmatched names " \
+            "(ALLOW_CLAUDE_API is not set). Export them for manual review instead."
+          )
+        end
         {}
       end
 
@@ -83,6 +89,18 @@ module Aggregation
     private
 
     attr_reader :pharmacy, :raw_listings, :existing_medications_block, :claude_client
+
+    # Tier 3 costs real money, and a crawl that suddenly finds thousands of new
+    # products sends every one of those names to the API - the better the crawl,
+    # the bigger the bill. Requiring an explicit opt-in means an ordinary
+    # aggregation run can never bill by surprise: it does the free tiers and leaves
+    # the rest for manual review via script/export_for_manual_matching.rb.
+    #
+    # An injected claude_client is an explicit request for the paid path (tests
+    # inject a fake), so it opts in on its own.
+    def use_claude?
+      claude_client.present? || ENV["ALLOW_CLAUDE_API"].present?
+    end
 
     # A local match still needs to be cached in NameMapping, same as a Claude match,
     # so it's a cache hit (tier 1) on every subsequent crawl rather than re-running
