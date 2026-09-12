@@ -10,8 +10,16 @@ module Admin
 
     before_action :require_configured_credentials
 
+    PER_PAGE = 50
+
     def index
-      @conversations = ChatConversation.recent.limit(100).includes(:messages)
+      scope = ChatConversation.recent.includes(:messages)
+      @total = scope.count
+      @page = [ params[:page].to_i, 1 ].max
+      # Paginated rather than capped: an operator needs to be able to reach an old
+      # conversation, not just the newest hundred.
+      @conversations = scope.offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
+      @total_pages = [ (@total / PER_PAGE.to_f).ceil, 1 ].max
     end
 
     def show

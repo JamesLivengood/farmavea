@@ -1,3 +1,5 @@
+require "timeout"
+
 class CrawlPharmacyJob < ApplicationJob
   queue_as :crawling
 
@@ -21,6 +23,10 @@ class CrawlPharmacyJob < ApplicationJob
     "san_pablo" => Crawlers::SanPabloCrawler
   }.freeze
 
+  # Generous enough for Benavides (20,000+ listings) and Del Ahorro's browser-driven
+  # run, short enough that one stuck pharmacy cannot eat the whole night.
+  MAX_CRAWL_DURATION = (ENV["CRAWL_TIMEOUT_MINUTES"] || 45).to_i.minutes
+
   # Guadalajara is best-effort (see Crawlers::GuadalajaraCrawler) - failures there
   # must not raise and fail the whole daily job chain.
   retry_on Crawlers::BaseCrawler::CrawlError, wait: 5.minutes, attempts: 2
@@ -43,9 +49,21 @@ class CrawlPharmacyJob < ApplicationJob
     crawl_run.mark_running!
 
     begin
-      crawler_class.new(pharmacy: pharmacy, crawl_run: crawl_run).call
+      # A hard ceiling on the whole crawl. Several crawlers have hung indefinitely -
+      # a page load that never returns, an HTTP request with no timeout - leaving the
+      # run stuck at "running" with nothing persisted and, worse, occupying the
+      # worker so every later pharmacy in the night's queue never starts. A crawl
+      # that overruns is a failure; it must not also be a blockage.
+      Timeout.timeout(MAX_CRAWL_DURATION) do
+        crawler_class.new(pharmacy: pharmacy, crawl_run: crawl_run).call
+      end
       crawl_run.mark_succeeded!
       NormalizeAndBuildOffersJob.perform_later(crawl_run.id) if aggregate
+    rescue Timeout::Error => e
+      # Not re-raised: one slow pharmacy should not retry and consume the budget of
+      # the ones still waiting behind it.
+      crawl_run.mark_failed!(e)
+      Rails.logger.error("[CrawlPharmacyJob] #{pharmacy_slug} exceeded #{MAX_CRAWL_DURATION.inspect} - abandoned")
     rescue StandardError => e
       crawl_run.mark_failed!(e)
       raise

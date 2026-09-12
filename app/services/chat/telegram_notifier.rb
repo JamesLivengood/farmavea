@@ -38,7 +38,30 @@ module Chat
         text << "🇲🇽 #{original}\n"
         text << "🇺🇸 #{english}\n" if english.present?
         text << "\nContacto: #{contact}\n"
-        text << "Responder: #{admin_url(conversation)}"
+        text << "Responder: #{admin_url(conversation)}\n"
+        # The admin URL above doubles as how a swiped reply is matched back to this
+        # conversation - see TelegramWebhooksController#conversation_for.
+        text << "\n↩️ Responde a este mensaje para contestar (escribe en inglés, se traduce solo)."
+
+        deliver(text)
+      end
+
+      # Confirms back to the operator what the visitor actually received, so a bad
+      # translation is visible immediately rather than discovered later.
+      def confirm_reply(conversation, original:, sent:)
+        return false unless configured?
+
+        text = if sent == original
+          "✅ Enviado: #{sent.truncate(300)}"
+        else
+          "✅ Enviado en español:\n#{sent.truncate(300)}\n\n(tu texto: #{original.truncate(160)})"
+        end
+
+        deliver(text)
+      end
+
+      def send_text(text)
+        return false unless configured?
 
         deliver(text)
       end

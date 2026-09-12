@@ -109,6 +109,39 @@ class DailyPriceUpdateJobTest < ActiveJob::TestCase
     end
   end
 
+  # A crawler that never returns left its run stuck at "running" with nothing
+  # persisted AND occupied the worker, so every pharmacy queued behind it that night
+  # never started. Three were stuck this way at once.
+  class HangingCrawler
+    def initialize(pharmacy:, crawl_run:) = nil
+    def call = sleep(30)
+  end
+
+  test "a crawl that overruns is abandoned instead of blocking the queue" do
+    pharmacy = create_pharmacy(slug: "benavides", name: "Benavides")
+
+    original_classes = CrawlPharmacyJob::CRAWLER_CLASSES
+    original_timeout = CrawlPharmacyJob::MAX_CRAWL_DURATION
+    CrawlPharmacyJob.send(:remove_const, :CRAWLER_CLASSES)
+    CrawlPharmacyJob.const_set(:CRAWLER_CLASSES, { "benavides" => HangingCrawler }.freeze)
+    CrawlPharmacyJob.send(:remove_const, :MAX_CRAWL_DURATION)
+    CrawlPharmacyJob.const_set(:MAX_CRAWL_DURATION, 0.5.seconds)
+
+    begin
+      # Must not raise: raising would retry and consume the budget of the pharmacies
+      # still waiting behind it.
+      CrawlPharmacyJob.perform_now("benavides", city: "Morelia, Michoacán")
+
+      run = CrawlRun.where(pharmacy: pharmacy).order(:created_at).last
+      assert_equal "failed", run.status, "an overrunning crawl must not be left as running"
+    ensure
+      CrawlPharmacyJob.send(:remove_const, :CRAWLER_CLASSES)
+      CrawlPharmacyJob.const_set(:CRAWLER_CLASSES, original_classes)
+      CrawlPharmacyJob.send(:remove_const, :MAX_CRAWL_DURATION)
+      CrawlPharmacyJob.const_set(:MAX_CRAWL_DURATION, original_timeout)
+    end
+  end
+
   test "CrawlPharmacyJob aggregates only when explicitly asked" do
     create_pharmacy(slug: "benavides", name: "Benavides")
 

@@ -19,6 +19,10 @@ Rails.application.routes.draw do
   get "chat" => "chats#show", as: :chat
   post "chat" => "chats#create"
 
+  # Telegram posts the operator's replies here. Authenticated by a secret token
+  # header, not by session - see TelegramWebhooksController.
+  post "telegram/webhook" => "telegram_webhooks#create", as: :telegram_webhook
+
   # The operator's inbox - password-protected, see Admin::ChatsController.
   namespace :admin do
     resources :chats, only: [ :index, :show ] do
