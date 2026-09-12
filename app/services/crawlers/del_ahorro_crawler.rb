@@ -43,7 +43,9 @@ module Crawlers
     # locally but over 45 in production, where slow renders trigger retries - and a
     # run that never returns holds a browser and degrades the site it shares a
     # machine with.
-    MAX_RUN_DURATION = ENV.fetch("DEL_AHORRO_MAX_MINUTES", 25).to_i.minutes
+    # 23 categories at up to TILE_WAIT_SECONDS each, plus page loads, needs more than
+    # the 25 minutes that bounded the old per-product path.
+    MAX_RUN_DURATION = ENV.fetch("DEL_AHORRO_MAX_MINUTES", 40).to_i.minutes
     # Generous next to a normal page load (a few seconds) but far below the run
     # budget, so one pathological page cannot consume it.
     PRODUCT_TIMEOUT = 45
@@ -79,6 +81,19 @@ module Crawlers
 
       from_categories = scrape_categories
       return from_categories if from_categories.size >= MIN_CATEGORY_YIELD
+
+      # The sitemap's product URLs all 404 as of 2026-09-12, so the per-product path
+      # currently burns the remaining budget to return nothing. It stays available
+      # behind a flag for when the sitemap is fixed, but is not the default fallback:
+      # a short run is better than a short run that also wastes 20 minutes.
+      unless ENV["DEL_AHORRO_PER_PRODUCT_FALLBACK"].present?
+        Rails.logger.warn(
+          "[DelAhorroCrawler] categories yielded only #{from_categories.size} products. " \
+          "Not falling back to per-product scraping (sitemap URLs are 404ing); " \
+          "set DEL_AHORRO_PER_PRODUCT_FALLBACK=1 to try it anyway."
+        )
+        return from_categories
+      end
 
       Rails.logger.warn(
         "[DelAhorroCrawler] categories yielded only #{from_categories.size} products; " \
@@ -138,7 +153,10 @@ module Crawlers
     # tiles on a page that has 24. Polling instead of sleeping a fixed interval means
     # a fast page costs a second and a slow one still gets read, rather than being
     # silently reported as an empty category (which would deactivate real listings).
-    TILE_WAIT_SECONDS = 20
+    # 20s was enough locally (478 products) but not in production's slower container,
+    # where the same code found 23 - the pages load, the tiles just aren't painted
+    # yet when they are read.
+    TILE_WAIT_SECONDS = ENV.fetch("DEL_AHORRO_TILE_WAIT", 45).to_i
     TILE_POLL_INTERVAL = 1
 
     def wait_for_tiles(page)

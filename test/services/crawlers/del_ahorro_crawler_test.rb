@@ -22,8 +22,14 @@ module Crawlers
 
       # These tests cover the per-product path, so category scraping is stubbed out.
       # Returning empty puts it below MIN_CATEGORY_YIELD, which is what triggers the
-      # per-product fallback being tested here.
+      # per-product fallback being tested here - and that fallback is opt-in, so
+      # these fakes enable it directly rather than depending on the environment.
       def scrape_categories = []
+
+      def fetch_listings
+        @deadline = current_time + MAX_RUN_DURATION
+        scrape_products_individually
+      end
     end
 
     def build(pharmacy, urls)
@@ -120,9 +126,11 @@ module Crawlers
     test "a run that exceeds its time limit stops and keeps what it already scraped" do
       pharmacy = create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro")
       urls = (1..75).map { |i| "https://www.fahorro.com/producto-#{i}-100-mg-10-tabletas.html" }
-      # 3 batches of 25; at 20 minutes each the deadline falls partway through.
+      # 3 batches of 25. Each batch burns 60% of the whole budget, so the deadline
+      # falls after the second - derived from the constant so a change to the run
+      # budget does not silently turn this test into a no-op.
       crawler = SlowDelAhorro.new(pharmacy: pharmacy, crawl_run: create_crawl_run(pharmacy: pharmacy),
-                                  urls: urls, seconds_per_batch: 20.minutes)
+                                  urls: urls, seconds_per_batch: DelAhorroCrawler::MAX_RUN_DURATION * 0.6)
 
       count = crawler.call
 
