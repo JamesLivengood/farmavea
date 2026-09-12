@@ -1,14 +1,14 @@
 <% content_for :title, "Farmavea — Precios de medicamentos hoy" %>
 
 <div class="mb-10">
-  <%# Derived, never hardcoded: this label said "Actualizado hoy" over prices that
-      were ten days old, which is exactly the claim a price-comparison site cannot
-      afford to get wrong. %>
-  <% fresh = @last_updated_at.present? && @last_updated_at > 36.hours.ago %>
-  <span class="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1 ring-1 ring-inset
-               <%= fresh ? "text-emerald-700 bg-emerald-50 ring-emerald-200" : "text-amber-700 bg-amber-50 ring-amber-200" %>">
-    <span class="w-1.5 h-1.5 rounded-full <%= fresh ? "bg-emerald-500" : "bg-amber-500" %>"></span>
-    <%= price_freshness_label(@last_updated_at) %>
+  <%# Fixed label, at the site owner's instruction (2026-09-12). Note this is NOT
+      derived from the data: it reads "hoy" whatever the age of the prices, including
+      on days the nightly crawl fails. The honest version is still one line away -
+      `price_freshness_label(@last_updated_at)` returns "Actualizado hace 5 días" and
+      friends, and @last_updated_at is still set by the controller for it. %>
+  <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 ring-1 ring-inset ring-emerald-200 rounded-full px-3 py-1">
+    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+    Actualizado hoy
   </span>
   <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-3">
     Lo más barato hoy en <span class="text-emerald-700"><%= @city %></span>
