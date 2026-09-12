@@ -17,8 +17,12 @@ module Crawlers
       def category_paths = @pages.keys.map { |k| k.split("?").first }.uniq
 
       def fetch_html(url)
-        @pages[url.delete_prefix(base_url)]
+        @pages[strip_page_size(url.delete_prefix(base_url))]
       end
+
+      # The crawler asks for a larger grid via &product_list_limit; these fixtures
+      # are keyed by path and page number only.
+      def strip_page_size(path) = path.sub(/&product_list_limit=\d+/, "")
     end
 
     def product_html(name, price, href)
@@ -116,7 +120,7 @@ module Crawlers
       private
 
       def fetch_html(url)
-        path = url.delete_prefix(base_url)
+        path = url.delete_prefix(base_url).sub(/&product_list_limit=\d+/, "")
         @attempts[path] += 1
         raise Net::ReadTimeout, "simulated" if path == @fail_on
 
