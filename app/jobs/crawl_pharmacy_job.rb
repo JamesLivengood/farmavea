@@ -58,7 +58,10 @@ class CrawlPharmacyJob < ApplicationJob
         crawler_class.new(pharmacy: pharmacy, crawl_run: crawl_run).call
       end
       crawl_run.mark_succeeded!
-      NormalizeAndBuildOffersJob.perform_later(crawl_run.id) if aggregate
+      # mark_succeeded! downgrades an empty or truncated run to "failed" - see
+      # CrawlRun. Aggregating one anyway would publish a partial catalogue as if it
+      # were the whole thing.
+      NormalizeAndBuildOffersJob.perform_later(crawl_run.id) if aggregate && crawl_run.succeeded?
     rescue Timeout::Error => e
       # Not re-raised: one slow pharmacy should not retry and consume the budget of
       # the ones still waiting behind it.

@@ -83,9 +83,20 @@ class DailyPriceUpdateJobTest < ActiveJob::TestCase
 
   # A stand-in crawler that does nothing, so these tests exercise the job's
   # aggregate/don't-aggregate branch without any network access.
+  # Persists one listing rather than none: a run that saves nothing is marked failed
+  # by CrawlRun#mark_succeeded!, and a failed run is deliberately not aggregated - so
+  # a truly no-op crawler could not exercise the aggregate branch at all.
   class NoopCrawler
-    def initialize(pharmacy:, crawl_run:) = nil
-    def call = 0
+    def initialize(pharmacy:, crawl_run:)
+      @pharmacy = pharmacy
+      @crawl_run = crawl_run
+    end
+
+    def call
+      RawListing.create!(pharmacy: @pharmacy, crawl_run: @crawl_run, raw_name: "Producto 500 mg",
+                         price_cents: 1000, scraped_at: Time.current)
+      1
+    end
   end
 
   # CRAWLER_CLASSES is frozen, so swap the whole constant for the duration.
@@ -139,6 +150,21 @@ class DailyPriceUpdateJobTest < ActiveJob::TestCase
       CrawlPharmacyJob.const_set(:CRAWLER_CLASSES, original_classes)
       CrawlPharmacyJob.send(:remove_const, :MAX_CRAWL_DURATION)
       CrawlPharmacyJob.const_set(:MAX_CRAWL_DURATION, original_timeout)
+    end
+  end
+
+  # Aggregating a truncated run publishes a partial catalogue as if it were the
+  # whole thing. Guadalajara's 280-listing run (against a previous 2,120) was
+  # aggregated before this guard existed.
+  test "a truncated crawl is not aggregated" do
+    pharmacy = create_pharmacy(slug: "benavides", name: "Benavides")
+    previous = create_crawl_run(pharmacy: pharmacy)
+    300.times { |i| create_raw_listing(pharmacy: pharmacy, crawl_run: previous, raw_name: "Producto #{i} 500 mg") }
+
+    with_noop_crawler("benavides") do
+      assert_no_enqueued_jobs only: NormalizeAndBuildOffersJob do
+        CrawlPharmacyJob.perform_now("benavides", city: "Morelia, Michoacán", aggregate: true)
+      end
     end
   end
 

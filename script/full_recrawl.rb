@@ -12,8 +12,13 @@ CITY = "Morelia, Michoacán".freeze
 # Discard a run that finds under half of what the previous one did. Below the
 # baseline threshold the pharmacy is too small for the ratio to mean anything -
 # costco legitimately moves between 92 and 95 listings.
-MAX_ACCEPTABLE_SHRINK = 0.5
-MIN_BASELINE_FOR_SHRINK_CHECK = 200
+#
+# The same rule now lives in CrawlRun#mark_succeeded!, which covers the scheduled
+# path too; the thresholds are read from there so the two cannot drift apart. This
+# script goes further and DELETES the run rather than marking it failed, because an
+# interactive re-crawl should leave no trace of a bad attempt.
+MAX_ACCEPTABLE_SHRINK = CrawlRun::MIN_SHARE_OF_PREVIOUS
+MIN_BASELINE_FOR_SHRINK_CHECK = CrawlRun::MIN_BASELINE_TO_COMPARE
 
 only = ENV["ONLY"].to_s.split(",").map(&:strip).reject(&:empty?)
 pharmacies = only.any? ? Pharmacy.active.where(slug: only) : Pharmacy.active

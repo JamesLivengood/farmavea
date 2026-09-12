@@ -50,6 +50,61 @@ class CrawlRunTest < ActiveSupport::TestCase
     assert_match(/persisted no listings/, crawl_run.error_message)
   end
 
+  # A truncated run marked "succeeded" becomes the newest run, and therefore the
+  # baseline every later comparison measures against - so the real catalogue is
+  # forgotten. Guadalajara found 280 listings where the previous run had 2,120.
+  test "a crawl that collapses against the previous run is marked failed" do
+    pharmacy = create_pharmacy
+    full = create_crawl_run(pharmacy: pharmacy)
+    300.times { |i| create_raw_listing(pharmacy: pharmacy, crawl_run: full, raw_name: "Producto #{i} 500 mg") }
+
+    truncated = CrawlRun.create!(pharmacy: pharmacy, city: "Morelia, Michoacán", status: "running")
+    50.times { |i| create_raw_listing(pharmacy: pharmacy, crawl_run: truncated, raw_name: "Parcial #{i} 500 mg") }
+
+    truncated.mark_succeeded!
+
+    assert_equal "failed", truncated.reload.status
+    assert_match(/looks truncated/, truncated.error_message)
+  end
+
+  test "a modest drop is accepted as a real inventory change" do
+    pharmacy = create_pharmacy
+    full = create_crawl_run(pharmacy: pharmacy)
+    300.times { |i| create_raw_listing(pharmacy: pharmacy, crawl_run: full, raw_name: "Producto #{i} 500 mg") }
+
+    current = CrawlRun.create!(pharmacy: pharmacy, city: "Morelia, Michoacán", status: "running")
+    280.times { |i| create_raw_listing(pharmacy: pharmacy, crawl_run: current, raw_name: "Vigente #{i} 500 mg") }
+
+    current.mark_succeeded!
+
+    assert_equal "succeeded", current.reload.status
+  end
+
+  # Small pharmacies move by a few listings routinely - costco sits between 92 and
+  # 95 - so the ratio is meaningless below a baseline worth comparing against.
+  test "a small pharmacy is not held to the shrink rule" do
+    pharmacy = create_pharmacy
+    previous = create_crawl_run(pharmacy: pharmacy)
+    90.times { |i| create_raw_listing(pharmacy: pharmacy, crawl_run: previous, raw_name: "Producto #{i} 500 mg") }
+
+    current = CrawlRun.create!(pharmacy: pharmacy, city: "Morelia, Michoacán", status: "running")
+    30.times { |i| create_raw_listing(pharmacy: pharmacy, crawl_run: current, raw_name: "Vigente #{i} 500 mg") }
+
+    current.mark_succeeded!
+
+    assert_equal "succeeded", current.reload.status
+  end
+
+  test "a pharmacy's first real crawl has no baseline and succeeds" do
+    pharmacy = create_pharmacy
+    first = CrawlRun.create!(pharmacy: pharmacy, city: "Morelia, Michoacán", status: "running")
+    10.times { |i| create_raw_listing(pharmacy: pharmacy, crawl_run: first, raw_name: "Producto #{i} 500 mg") }
+
+    first.mark_succeeded!
+
+    assert_equal "succeeded", first.reload.status
+  end
+
   test "a crawl that persisted listings succeeds normally" do
     pharmacy = create_pharmacy
     crawl_run = CrawlRun.create!(pharmacy: pharmacy, city: "Morelia, Michoacán", status: "running")
