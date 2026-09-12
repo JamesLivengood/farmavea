@@ -15,6 +15,13 @@ shared: &shared
     queue: crawling
     schedule: every day at 5am America/Mexico_City
 
+  # The privacy notice promises chat messages are deleted after
+  # ChatConversation::RETENTION; this is what keeps that true.
+  purge_old_chat_conversations:
+    class: PurgeOldChatConversationsJob
+    queue: default
+    schedule: every day at 4:20am America/Mexico_City
+
 development:
   <<: *shared
 

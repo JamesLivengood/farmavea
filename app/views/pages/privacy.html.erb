@@ -30,11 +30,41 @@
     </section>
 
     <section>
-      <h2 class="text-lg font-bold text-slate-900 mb-2">No pedimos datos personales</h2>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">No necesitas registrarte</h2>
       <p>
-        Este sitio no tiene registro ni inicio de sesión. Nunca te pedimos tu
-        nombre, correo electrónico, teléfono, dirección ni datos de pago, y no
-        recopilamos esa información por ningún otro medio.
+        Este sitio no tiene registro ni inicio de sesión. Para navegar y comparar
+        precios nunca te pedimos tu nombre, teléfono, dirección ni datos de pago.
+        La única excepción es el chat, y sólo si decides usarlo: ahí puedes
+        escribirnos y, si quieres, dejarnos un correo para responderte. Lo
+        explicamos en la siguiente sección.
+      </p>
+    </section>
+
+    <section>
+      <h2 class="text-lg font-bold text-slate-900 mb-2">El chat</h2>
+      <p class="mb-3">
+        Si nos escribes por el chat, guardamos el texto de tus mensajes y el
+        correo electrónico que nos dejes, si es que nos dejas uno. Los necesitamos
+        para poder leerte y responderte: no hay otra forma de sostener una
+        conversación.
+      </p>
+      <p class="mb-3">
+        Lo que escribas puede incluir información sobre tu salud. Compártenos sólo
+        lo que consideres necesario, y ten presente que
+        <strong class="font-semibold">el chat no es asesoría médica</strong>: no
+        sustituye el diagnóstico, la receta ni el consejo de un médico o
+        farmacéutico.
+      </p>
+      <p class="mb-3">
+        Tus mensajes se guardan hasta por
+        <%= ChatConversation::RETENTION.inspect %> y después se eliminan
+        automáticamente. No los usamos para publicidad ni los compartimos con
+        terceros. Para que podamos avisarte de un mensaje nuevo, el texto se envía
+        también a la aplicación de mensajería de quien atiende el chat.
+      </p>
+      <p>
+        Si quieres que borremos una conversación antes de ese plazo, escríbenos
+        por el mismo chat y la eliminamos.
       </p>
     </section>
 

@@ -14,7 +14,7 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
 
     [ root_path, medication_path(medication), search_path(q: "test") ].each do |path|
       get path
-      assert_select "a[href=?]", privacy_path, { count: 1 }, "no privacy link on #{path}"
+      assert_select "a[href=?]", privacy_path, { minimum: 1 }, "no privacy link on #{path}"
     end
   end
 
@@ -69,6 +69,37 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
 
     assert_includes @response.body, "/medications/#{listed.id}"
     assert_not_includes @response.body, "/medications/#{unlisted.id}"
+  end
+
+  # The disclaimer must be on the page before anyone types, not only in the privacy
+  # notice - it exists so people do not mistake the chat for clinical advice.
+  test "the chat widget states that it is not medical advice" do
+    get root_path
+
+    assert_response :success
+    assert_includes @response.body, "Esto no es asesoría médica"
+    assert_includes @response.body, "sustituye el diagnóstico"
+  end
+
+  # A US nursing licence does not authorise practice in Mexico, which requires a
+  # cédula profesional from the SEP. The widget may state the licence as a fact but
+  # must never imply a Mexican credential or that this site vouches for one.
+  test "the chat widget does not claim a verified or Mexican nursing credential" do
+    get root_path
+
+    body = @response.body
+    assert_includes body, "licencia en EE.UU."
+    assert_not_includes body, "enfermera verificada"
+    assert_not_includes body, "verificada"
+    assert_not_includes body, "certificada en México"
+  end
+
+  test "the privacy notice explains that chat messages are stored" do
+    get privacy_path
+
+    assert_response :success
+    assert_includes @response.body, "El chat"
+    assert_includes @response.body, "no es asesoría médica"
   end
 
   test "robots.txt points crawlers at the sitemap" do

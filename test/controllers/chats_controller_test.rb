@@ -1,0 +1,88 @@
+require "test_helper"
+
+class ChatsControllerTest < ActionDispatch::IntegrationTest
+  test "a first message creates a conversation and returns its token" do
+    post chat_path, params: { body: "¿Tienen paracetamol más barato?" }, as: :json
+
+    assert_response :created
+    body = JSON.parse(@response.body)
+    assert body["token"].present?
+    assert_equal "¿Tienen paracetamol más barato?", body["message"]["body"]
+    assert_equal "visitor", body["message"]["author"]
+  end
+
+  test "a follow-up message joins the existing conversation" do
+    post chat_path, params: { body: "Primera" }, as: :json
+    token = JSON.parse(@response.body)["token"]
+
+    post chat_path, params: { token: token, body: "Segunda" }, as: :json
+
+    assert_response :created
+    assert_equal 1, ChatConversation.count
+    assert_equal 2, ChatConversation.first.messages.count
+  end
+
+  test "an empty message is rejected" do
+    post chat_path, params: { body: "   " }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal 0, ChatConversation.count
+  end
+
+  test "an over-long message is rejected rather than truncated" do
+    post chat_path, params: { body: "a" * (ChatMessage::MAX_LENGTH + 1) }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal 0, ChatMessage.count
+  end
+
+  # A public endpoint that writes rows and pushes a phone notification needs a
+  # ceiling, or one person can fill the table and the operator's notifications.
+  test "a conversation is rate limited after too many messages" do
+    post chat_path, params: { body: "Primera" }, as: :json
+    token = JSON.parse(@response.body)["token"]
+
+    ChatsController::MAX_MESSAGES_PER_WINDOW.times do |i|
+      post chat_path, params: { token: token, body: "Mensaje #{i}" }, as: :json
+    end
+
+    assert_response :too_many_requests
+  end
+
+  test "the email is stored only when the visitor supplies one" do
+    post chat_path, params: { body: "Sin correo" }, as: :json
+    assert_nil ChatConversation.last.visitor_email
+
+    post chat_path, params: { body: "Con correo", email: "alguien@example.com" }, as: :json
+    assert_equal "alguien@example.com", ChatConversation.last.visitor_email
+  end
+
+  test "showing a conversation returns its messages so a reply is visible on return" do
+    post chat_path, params: { body: "¿Precio de ibuprofeno?" }, as: :json
+    token = JSON.parse(@response.body)["token"]
+    ChatConversation.find_by(token: token).messages.create!(author: "operator", body: "Cuesta $45.")
+
+    get chat_path, params: { token: token }
+
+    body = JSON.parse(@response.body)
+    assert_equal 2, body["messages"].size
+    assert_equal "operator", body["messages"].last["author"]
+  end
+
+  test "an unknown token returns no messages rather than an error" do
+    get chat_path, params: { token: "not-a-real-token" }
+
+    assert_response :success
+    assert_empty JSON.parse(@response.body)["messages"]
+  end
+
+  # The token is the only thing guarding a conversation, so it must not be
+  # guessable from anything the visitor is or does.
+  test "conversation tokens are random and unique" do
+    2.times { |i| post chat_path, params: { body: "Mensaje #{i}" }, as: :json }
+
+    tokens = ChatConversation.pluck(:token)
+    assert_equal tokens.size, tokens.uniq.size
+    assert tokens.all? { |t| t.length >= 20 }
+  end
+end

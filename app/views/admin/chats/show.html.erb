@@ -1,0 +1,54 @@
+<% content_for :title, "Conversación — Farmavea" %>
+
+<div class="max-w-2xl mx-auto">
+  <%= link_to "← Todas las conversaciones", admin_chats_path,
+        class: "text-sm text-slate-500 hover:text-emerald-600" %>
+
+  <div class="mt-4 bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+      <p class="text-sm font-semibold text-slate-900">
+        <%= @conversation.visitor_email.presence || "Visitante sin correo" %>
+      </p>
+      <p class="text-xs text-slate-400">
+        Inició <%= @conversation.created_at.strftime("%d/%m/%Y %H:%M") %>
+      </p>
+    </div>
+
+    <div class="p-5 space-y-3">
+      <% @conversation.messages.each do |message| %>
+        <div class="flex <%= message.visitor? ? "justify-start" : "justify-end" %>">
+          <div class="<%= message.visitor? ? "bg-slate-100 text-slate-800" : "bg-emerald-600 text-white" %> rounded-2xl px-3.5 py-2 max-w-[80%]">
+            <p class="text-sm whitespace-pre-wrap break-words"><%= message.body %></p>
+            <p class="<%= message.visitor? ? "text-slate-400" : "text-emerald-100" %> text-[10px] mt-1">
+              <%= message.created_at.strftime("%d/%m %H:%M") %>
+            </p>
+          </div>
+        </div>
+      <% end %>
+    </div>
+
+    <%= form_with url: reply_admin_chat_path(@conversation), method: :post,
+          class: "border-t border-slate-100 p-4 space-y-2" do |f| %>
+      <%# The same limit the visitor's box enforces, so a reply cannot be silently
+          truncated by the model's validation after it has been typed. %>
+      <%= f.text_area :body, rows: 3, maxlength: ChatMessage::MAX_LENGTH, required: true,
+            placeholder: "Escribe tu respuesta…",
+            class: "w-full text-sm rounded-lg border border-slate-300 px-3 py-2 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none resize-none" %>
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-[11px] text-slate-400">
+          Recuerda: el chat no es asesoría médica. Para dudas clínicas, remite a un
+          médico o farmacéutico.
+        </p>
+        <%= f.submit "Responder",
+              class: "bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg px-4 py-2 cursor-pointer transition-colors" %>
+      </div>
+    <% end %>
+  </div>
+
+  <% if @conversation.visitor_email.present? %>
+    <p class="text-xs text-slate-400 mt-3">
+      El visitante dejó su correo, pero las respuestas solo aparecen en la página
+      cuando vuelve. El envío de correos todavía no está configurado.
+    </p>
+  <% end %>
+</div>

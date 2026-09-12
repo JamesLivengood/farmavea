@@ -14,6 +14,18 @@ Rails.application.routes.draw do
   # purchasable medications get discovered.
   get "sitemap.xml" => "pages#sitemap", as: :sitemap, defaults: { format: "xml" }
 
+  # Visitor-facing chat. Conversations are addressed by a token the browser holds,
+  # so there is no :id here that could be enumerated.
+  get "chat" => "chats#show", as: :chat
+  post "chat" => "chats#create"
+
+  # The operator's inbox - password-protected, see Admin::ChatsController.
+  namespace :admin do
+    resources :chats, only: [ :index, :show ] do
+      post :reply, on: :member
+    end
+  end
+
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
   # Can be used by load balancers and uptime monitors to verify that the app is live.
   get "up" => "rails/health#show", as: :rails_health_check

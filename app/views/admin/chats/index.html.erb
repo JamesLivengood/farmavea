@@ -1,0 +1,42 @@
+<% content_for :title, "Conversaciones — Farmavea" %>
+
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-slate-900">Conversaciones</h1>
+  <p class="text-slate-500 text-sm mt-1">
+    <%= pluralize(@conversations.size, "conversación", plural: "conversaciones") %>.
+    Se eliminan automáticamente después de <%= ChatConversation::RETENTION.inspect %>.
+  </p>
+</div>
+
+<% if @conversations.empty? %>
+  <div class="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500">
+    Todavía no hay mensajes.
+  </div>
+<% else %>
+  <div class="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+    <% @conversations.each do |conversation| %>
+      <% unread = conversation.unread_count %>
+      <%= link_to admin_chat_path(conversation),
+            class: "flex items-start gap-3 p-4 hover:bg-slate-50 transition-colors" do %>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <% if unread.positive? %>
+              <span class="bg-emerald-600 text-white text-[11px] font-bold rounded-full px-2 py-0.5">
+                <%= unread %> sin leer
+              </span>
+            <% end %>
+            <span class="text-xs text-slate-400">
+              <%= conversation.last_message_at&.strftime("%d/%m %H:%M") %>
+            </span>
+          </div>
+          <p class="text-sm text-slate-800 mt-1 truncate">
+            <%= conversation.messages.last&.body %>
+          </p>
+          <% if conversation.visitor_email.present? %>
+            <p class="text-xs text-slate-400 mt-0.5"><%= conversation.visitor_email %></p>
+          <% end %>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>

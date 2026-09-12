@@ -10,9 +10,31 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_232021) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_12_181345) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "chat_conversations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "last_message_at"
+    t.string "status", default: "open", null: false
+    t.string "token", null: false
+    t.datetime "updated_at", null: false
+    t.string "visitor_email"
+    t.index ["last_message_at"], name: "index_chat_conversations_on_last_message_at"
+    t.index ["token"], name: "index_chat_conversations_on_token", unique: true
+  end
+
+  create_table "chat_messages", force: :cascade do |t|
+    t.string "author", null: false
+    t.text "body", null: false
+    t.bigint "chat_conversation_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "read_at"
+    t.datetime "updated_at", null: false
+    t.index ["chat_conversation_id", "created_at"], name: "index_chat_messages_on_chat_conversation_id_and_created_at"
+    t.index ["chat_conversation_id"], name: "index_chat_messages_on_chat_conversation_id"
+  end
 
   create_table "crawl_runs", force: :cascade do |t|
     t.string "city", null: false
@@ -279,6 +301,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_232021) do
     t.index ["pharmacy_id"], name: "index_unresolved_listings_on_pharmacy_id"
   end
 
+  add_foreign_key "chat_messages", "chat_conversations"
   add_foreign_key "crawl_runs", "pharmacies"
   add_foreign_key "name_mappings", "medications"
   add_foreign_key "name_mappings", "pharmacies"
