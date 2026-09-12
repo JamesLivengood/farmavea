@@ -10,6 +10,7 @@ module Crawlers
   # product page with Ferrum to read the final price.
   class DelAhorroCrawler < BaseCrawler
     SITEMAP_INDEX_URL = "https://www.fahorro.com/sitemap.xml"
+    CATEGORY_ROOT = "https://www.fahorro.com/farmacia.html"
 
     # Root-level sitemap .html URLs mix top-level category pages (few hyphens, e.g.
     # "farmacia.html", "vitaminas.html") with real product detail pages (many hyphens,
@@ -67,9 +68,103 @@ module Crawlers
     # Seam for tests, which advance this instead of sleeping.
     def current_time = Time.current
 
+    # Category pages now carry the name, price and URL of every tile, so one page load
+    # yields ~24 products instead of one render each. They were WAF-blocked when this
+    # crawler was written (hence the sitemap approach below), but as of 2026-09-12 they
+    # render fine - while the sitemap has gone stale and its URLs 404, which is why a
+    # full run returned zero products. Category scraping is now the primary source;
+    # the per-product path stays as a fallback and for pages categories don't list.
     def fetch_listings
-      product_urls = prioritized_product_urls.first(MAX_PRODUCTS)
       @deadline = current_time + MAX_RUN_DURATION
+
+      from_categories = scrape_categories
+      return from_categories if from_categories.size >= MIN_CATEGORY_YIELD
+
+      Rails.logger.warn(
+        "[DelAhorroCrawler] categories yielded only #{from_categories.size} products; " \
+        "falling back to per-product scraping."
+      )
+      from_categories + scrape_products_individually
+    end
+
+    # Below this, assume the category layout changed again and fall back rather than
+    # reporting a near-empty catalogue (which would deactivate real listings).
+    MIN_CATEGORY_YIELD = 100
+
+    def scrape_categories
+      page = browser.create_page
+      page.headers.set("User-Agent" => USER_AGENT)
+      products = {}
+
+      category_urls(page).each do |url|
+        break if current_time > @deadline
+
+        begin
+          page.go_to(url)
+          wait_for_tiles(page).each do |tile|
+            listing = extract_tile(tile)
+            # Keyed by URL so a product appearing in several categories counts once.
+            products[listing[:product_url]] ||= listing if listing
+          end
+        rescue StandardError => e
+          Rails.logger.warn("[DelAhorroCrawler] category #{url} failed: #{e.class}: #{e.message[0, 120]}")
+        end
+      end
+
+      products.values
+    ensure
+      page&.close
+    end
+
+    def category_urls(page)
+      page.go_to(CATEGORY_ROOT)
+      # Measured at 32s to fully load, so poll for the nav links rather than guessing
+      # a sleep - too short here and the run finds no categories at all.
+      deadline = current_time + TILE_WAIT_SECONDS
+      urls = []
+      loop do
+        urls = page.css("a").map { |a| a.attribute("href").to_s }
+                   .select { |h| h.match?(%r{fahorro\.com/farmacia/[^/]+\.html\z}) }
+                   .uniq
+        break if urls.any? || current_time > deadline
+
+        sleep TILE_POLL_INTERVAL
+      end
+      # The root itself lists products too, so keep it in the rotation.
+      ([ CATEGORY_ROOT ] + urls).uniq
+    end
+
+    # The tiles are injected client-side and genuinely slow - a 3s wait returned zero
+    # tiles on a page that has 24. Polling instead of sleeping a fixed interval means
+    # a fast page costs a second and a slow one still gets read, rather than being
+    # silently reported as an empty category (which would deactivate real listings).
+    TILE_WAIT_SECONDS = 20
+    TILE_POLL_INTERVAL = 1
+
+    def wait_for_tiles(page)
+      deadline = current_time + TILE_WAIT_SECONDS
+      loop do
+        tiles = page.css(".product-item")
+        return tiles if tiles.any?
+        return [] if current_time > deadline
+
+        sleep TILE_POLL_INTERVAL
+      end
+    end
+
+    def extract_tile(tile)
+      name = tile.css(".product-item-link").first&.text.to_s.strip
+      return nil if name.blank?
+
+      price_cents = parse_price_cents(tile.css(".price").first&.text)
+      return nil if price_cents.nil? || price_cents <= 0
+
+      url = tile.css("a").first&.attribute("href").to_s
+      { raw_name: name, price_cents: price_cents, presentation_text: nil, product_url: url.presence }
+    end
+
+    def scrape_products_individually
+      product_urls = prioritized_product_urls.first(MAX_PRODUCTS)
       results = []
 
       product_urls.each_slice(PRODUCTS_PER_BROWSER) do |url_batch|

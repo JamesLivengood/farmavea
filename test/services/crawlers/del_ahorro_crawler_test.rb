@@ -19,6 +19,11 @@ module Crawlers
 
       def discover_product_urls = @urls
       def known_medication_terms = []
+
+      # These tests cover the per-product path, so category scraping is stubbed out.
+      # Returning empty puts it below MIN_CATEGORY_YIELD, which is what triggers the
+      # per-product fallback being tested here.
+      def scrape_categories = []
     end
 
     def build(pharmacy, urls)
@@ -162,6 +167,74 @@ module Crawlers
         DelAhorroCrawler.send(:remove_const, :PRODUCT_TIMEOUT)
         DelAhorroCrawler.const_set(:PRODUCT_TIMEOUT, original)
       end
+    end
+
+    # Category pages carry name, price and URL on every tile - one page load yields
+    # ~24 products rather than one render each. This became the primary path when the
+    # sitemap went stale and started serving 404s for every product URL.
+    class CategoryDelAhorro < DelAhorroCrawler
+      def initialize(pharmacy:, crawl_run:, products:)
+        super(pharmacy: pharmacy, crawl_run: crawl_run)
+        @products = products
+      end
+
+      private
+
+      def scrape_categories = @products
+
+      def scrape_products_individually
+        raise "must not fall back when categories produced enough products"
+      end
+    end
+
+    test "category scraping is used and per-product scraping is skipped" do
+      pharmacy = create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro")
+      products = (1..120).map do |i|
+        { raw_name: "Producto #{i} 100 mg", price_cents: 1000 + i,
+          presentation_text: nil, product_url: "https://www.fahorro.com/producto-#{i}.html" }
+      end
+
+      count = CategoryDelAhorro.new(pharmacy: pharmacy, crawl_run: create_crawl_run(pharmacy: pharmacy),
+                                    products: products).call
+
+      assert_equal 120, count
+      assert_equal 120, RawListing.where(pharmacy: pharmacy).count
+    end
+
+    test "a tile with no price is skipped rather than stored at zero" do
+      crawler = DelAhorroCrawler.allocate
+      tile = Struct.new(:html) do
+        def css(selector)
+          return [ Struct.new(:text).new("Omeprazol 20 mg") ] if selector == ".product-item-link"
+
+          [] # no .price node, and no anchor
+        end
+      end.new(nil)
+
+      assert_nil crawler.send(:extract_tile, tile)
+    end
+
+    test "a tile with a name and price becomes a listing" do
+      crawler = DelAhorroCrawler.allocate
+      node = Struct.new(:text)
+      anchor = Struct.new(:href) do
+        def attribute(_name) = href
+      end
+      tile = Struct.new(:x) do
+        def css(selector)
+          case selector
+          when ".product-item-link" then [ Struct.new(:text).new("Omeprazol 20 mg 30 cápsulas") ]
+          when ".price" then [ Struct.new(:text).new("$150.00") ]
+          else [ Struct.new(:href) { def attribute(_) = "https://www.fahorro.com/omeprazol.html" }.new(nil) ]
+          end
+        end
+      end.new(nil)
+
+      listing = crawler.send(:extract_tile, tile)
+
+      assert_equal "Omeprazol 20 mg 30 cápsulas", listing[:raw_name]
+      assert_equal 15000, listing[:price_cents]
+      assert_equal "https://www.fahorro.com/omeprazol.html", listing[:product_url]
     end
 
     test "a run that finishes within the limit scrapes everything" do
