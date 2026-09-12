@@ -126,6 +126,44 @@ module Crawlers
       assert_equal 50, RawListing.where(pharmacy: pharmacy).count
     end
 
+    # Hangs on one specific URL, the way fahorro's dimenhidrinato page did - twice,
+    # each time stalling the entire run until it was killed.
+    class HangingDelAhorro < FakeDelAhorro
+      def initialize(pharmacy:, crawl_run:, urls:, hang_on:)
+        super(pharmacy: pharmacy, crawl_run: crawl_run, urls: urls)
+        @hang_on = hang_on
+      end
+
+      private
+
+      def new_browser = nil
+
+      def scrape_product(url, _browser)
+        sleep 30 if url == @hang_on # longer than the shortened timeout below
+        { raw_name: "Producto", price_cents: 1000, product_url: url }
+      end
+    end
+
+    test "one hung page costs a single product, not the whole run" do
+      pharmacy = create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro")
+      urls = (1..5).map { |i| "https://www.fahorro.com/producto-#{i}-100-mg-10-tabletas.html" }
+      crawler = HangingDelAhorro.new(pharmacy: pharmacy, crawl_run: create_crawl_run(pharmacy: pharmacy),
+                                     urls: urls, hang_on: urls[2])
+
+      # A 1s timeout keeps the test fast; the constant is 45s in production.
+      original = DelAhorroCrawler::PRODUCT_TIMEOUT
+      DelAhorroCrawler.send(:remove_const, :PRODUCT_TIMEOUT)
+      DelAhorroCrawler.const_set(:PRODUCT_TIMEOUT, 1)
+      begin
+        count = crawler.call
+
+        assert_equal 4, count, "the other four products must still be scraped"
+      ensure
+        DelAhorroCrawler.send(:remove_const, :PRODUCT_TIMEOUT)
+        DelAhorroCrawler.const_set(:PRODUCT_TIMEOUT, original)
+      end
+    end
+
     test "a run that finishes within the limit scrapes everything" do
       pharmacy = create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro")
       urls = (1..75).map { |i| "https://www.fahorro.com/producto-#{i}-100-mg-10-tabletas.html" }

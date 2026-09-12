@@ -1,5 +1,6 @@
 require "net/http"
 require "nokogiri"
+require "timeout"
 
 module Crawlers
   # Farmacia del Ahorro (fahorro.com) is a Magento storefront. Category/search pages
@@ -42,6 +43,9 @@ module Crawlers
     # run that never returns holds a browser and degrades the site it shares a
     # machine with.
     MAX_RUN_DURATION = ENV.fetch("DEL_AHORRO_MAX_MINUTES", 25).to_i.minutes
+    # Generous next to a normal page load (a few seconds) but far below the run
+    # budget, so one pathological page cannot consume it.
+    PRODUCT_TIMEOUT = 45
 
     # Rendering is intermittently flaky on a long-lived shared browser (observed:
     # .product-info-main sometimes fails to appear at all on a page that renders fine
@@ -65,7 +69,7 @@ module Crawlers
 
     def fetch_listings
       product_urls = prioritized_product_urls.first(MAX_PRODUCTS)
-      deadline = current_time + MAX_RUN_DURATION
+      @deadline = current_time + MAX_RUN_DURATION
       results = []
 
       product_urls.each_slice(PRODUCTS_PER_BROWSER) do |url_batch|
@@ -73,7 +77,7 @@ module Crawlers
         # firing - one production run sat at 0.4% CPU for 45 minutes and was killed,
         # losing all of it, because everything is persisted in one batch at the end.
         # Partial results from a bounded run are worth far more than none.
-        if current_time > deadline
+        if current_time > @deadline
           Rails.logger.warn(
             "[#{self.class.name}] stopping at #{results.size} products: hit the " \
             "#{MAX_RUN_DURATION.inspect} limit with #{product_urls.size} planned."
@@ -147,7 +151,14 @@ module Crawlers
 
     def scrape_batch(url_batch)
       batch_browser = new_browser
-      url_batch.filter_map { |url| scrape_product_with_retries(url, batch_browser) }
+      # Checked per product, not just per batch: a single page can hang the browser
+      # for longer than the whole run's budget (fahorro's dimenhidrinato page did
+      # exactly this, twice), and a batch-level check never gets reached.
+      url_batch.filter_map do |url|
+        next if @deadline && current_time > @deadline
+
+        scrape_product_with_retries(url, batch_browser)
+      end
     rescue Ferrum::ProcessTimeoutError => e
       # Chrome failed to launch for this whole batch - seen after thousands of
       # sequential launches over a multi-hour run, likely transient OS-level resource
@@ -168,10 +179,17 @@ module Crawlers
     # :no_price (definitive, don't retry) vs nil (bad render, worth retrying).
     def scrape_product_with_retries(url, batch_browser)
       MAX_RENDER_ATTEMPTS.times do |attempt|
-        result = scrape_product(url, batch_browser)
+        # Ferrum's own timeouts do not always fire - a page can leave the CDP call
+        # waiting indefinitely (observed twice on the same fahorro product, each time
+        # stalling the run until it was killed). This is the outer guard that makes a
+        # hung page cost one product rather than the entire crawl.
+        result = Timeout.timeout(PRODUCT_TIMEOUT) { scrape_product(url, batch_browser) }
         return nil if result == :no_price
         return result if result
         Rails.logger.info("[DelAhorroCrawler] retrying #{url} (attempt #{attempt + 2}/#{MAX_RENDER_ATTEMPTS})") if attempt < MAX_RENDER_ATTEMPTS - 1
+      rescue Timeout::Error
+        Rails.logger.warn("[DelAhorroCrawler] #{url} hung for over #{PRODUCT_TIMEOUT}s - skipping it")
+        return nil
       end
       Rails.logger.warn("[DelAhorroCrawler] gave up on #{url} after #{MAX_RENDER_ATTEMPTS} attempts")
       nil
