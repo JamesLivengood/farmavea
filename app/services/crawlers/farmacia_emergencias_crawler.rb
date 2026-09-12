@@ -39,12 +39,7 @@ module Crawlers
     end
 
     def fetch_html(url)
-      uri = URI.parse(url)
-      request = Net::HTTP::Get.new(uri)
-      request["User-Agent"] = USER_AGENT
-      response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
-        http.request(request)
-      end
+      response = http_get(url, verify_mode: OpenSSL::SSL::VERIFY_NONE)
       return nil unless response.is_a?(Net::HTTPSuccess)
       response.body
     end

@@ -44,10 +44,7 @@ module Crawlers
     end
 
     def fetch_json(url)
-      uri = URI.parse(url)
-      request = Net::HTTP::Get.new(uri)
-      request["User-Agent"] = REALISTIC_USER_AGENT
-      response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
+      response = http_get(url, headers: { "User-Agent" => REALISTIC_USER_AGENT })
       return nil unless response.is_a?(Net::HTTPSuccess)
       JSON.parse(response.body)
     rescue JSON::ParserError => e

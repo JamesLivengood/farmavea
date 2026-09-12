@@ -64,10 +64,7 @@ module Crawlers
     end
 
     def fetch_json(url)
-      uri = URI.parse(url)
-      request = Net::HTTP::Get.new(uri)
-      request["User-Agent"] = USER_AGENT
-      response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
+      response = http_get(url)
       unless response.is_a?(Net::HTTPSuccess)
         # Named in the error so a throttle (429) is distinguishable from a real
         # missing page - "no parseable body" said nothing about which had happened.

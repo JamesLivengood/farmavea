@@ -49,12 +49,10 @@ module Crawlers
     def fetch_html(term, page_number)
       url = "#{BASE_URL}#{SEARCH_PATH}?controller=search&order=product.position.desc" \
             "&s=#{CGI.escape(term)}&page=#{page_number}"
-      uri = URI.parse(url)
-      request = Net::HTTP::Get.new(uri)
-      request["User-Agent"] = USER_AGENT
-      request["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-      request["Accept-Language"] = "es-MX,es;q=0.9,en;q=0.8"
-      response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
+      response = http_get(url, headers: {
+        "Accept" => "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language" => "es-MX,es;q=0.9,en;q=0.8"
+      })
       return nil unless response.is_a?(Net::HTTPSuccess)
       response.body
     end

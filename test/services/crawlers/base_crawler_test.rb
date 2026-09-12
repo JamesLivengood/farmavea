@@ -143,6 +143,24 @@ module Crawlers
       ENV["FERRUM_BROWSER_PATH"] = original
     end
 
+    # Net::HTTP.start has NO open timeout by default, so a connection that never
+    # establishes hangs forever. Benavides sat "running" with zero listings for half
+    # an hour at a time because of this, holding the worker and preventing every
+    # pharmacy queued behind it from starting at all.
+    test "outbound HTTP requests have both an open and a read timeout" do
+      assert Crawlers::BaseCrawler::HTTP_OPEN_TIMEOUT.positive?
+      assert Crawlers::BaseCrawler::HTTP_READ_TIMEOUT.positive?
+    end
+
+    test "no crawler calls Net::HTTP.start directly, bypassing the timeouts" do
+      offenders = Dir[Rails.root.join("app/services/crawlers/*.rb")].reject do |path|
+        File.basename(path) == "base_crawler.rb"
+      end.select { |path| File.read(path).match?(/Net::HTTP\.start/) }
+
+      assert_empty offenders.map { |p| File.basename(p) },
+        "these crawlers bypass http_get and so have no connection timeout"
+    end
+
     private
 
     def fake_crawler

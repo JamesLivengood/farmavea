@@ -1,4 +1,5 @@
 require "ferrum"
+require "net/http"
 
 module Crawlers
   # Common headless-browser plumbing for pharmacy crawlers. Subclasses implement
@@ -71,6 +72,32 @@ module Crawlers
       return ENV["FERRUM_BROWSER_PATH"] if ENV["FERRUM_BROWSER_PATH"].present?
 
       BROWSER_PATHS.find { |path| File.exist?(path) }
+    end
+
+    # Timeouts for every outbound HTTP call. Net::HTTP.start has NO open timeout by
+    # default, so a connection that never establishes hangs forever - which is how
+    # Benavides sat "running" with zero listings for half an hour at a time, holding
+    # the worker and stopping every pharmacy queued behind it from starting at all.
+    HTTP_OPEN_TIMEOUT = 10
+    HTTP_READ_TIMEOUT = 30
+
+    # Use this instead of Net::HTTP.start directly. Returns the response, or raises -
+    # callers decide whether a failure is fatal or worth retrying.
+    def http_get(url, headers: {}, verify_mode: nil)
+      uri = URI.parse(url.to_s)
+      request = Net::HTTP::Get.new(uri)
+      request["User-Agent"] = USER_AGENT
+      headers.each { |key, value| request[key] = value }
+
+      options = {
+        use_ssl: uri.scheme == "https",
+        open_timeout: HTTP_OPEN_TIMEOUT,
+        read_timeout: HTTP_READ_TIMEOUT,
+        write_timeout: HTTP_READ_TIMEOUT
+      }
+      options[:verify_mode] = verify_mode if verify_mode
+
+      Net::HTTP.start(uri.host, uri.port, **options) { |http| http.request(request) }
     end
 
     private
