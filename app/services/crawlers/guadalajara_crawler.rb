@@ -36,6 +36,25 @@ module Crawlers
       page&.close
     end
 
+    # Retries a page whose grid comes back empty. The tiles are rendered client-side,
+    # so "no tiles yet" and "no tiles at all" look identical at the moment of reading -
+    # only a retry distinguishes a slow render from the real end of the category.
+    TILE_LOAD_ATTEMPTS = 3
+
+    def load_tiles(page, url)
+      TILE_LOAD_ATTEMPTS.times do |attempt|
+        page.go_to(url)
+        sleep(rand(1.5..3.0)) # human-like pacing to reduce bot-mitigation triggers
+        page.network.wait_for_idle(timeout: 20) rescue nil
+
+        tiles = page.css(".product-tile")
+        return tiles if tiles.any?
+
+        sleep(2 + attempt * 3) if attempt < TILE_LOAD_ATTEMPTS - 1
+      end
+      []
+    end
+
     def scrape_category(page, path)
       results = []
       seen_urls = Set.new
@@ -45,11 +64,11 @@ module Crawlers
         # first page - confirmed the real SFRA pagination is offset/limit-based
         # (`start`/`sz`), same mechanism as YzaCrawler's Search-UpdateGrid endpoint.
         url = "#{BASE_URL}#{path}?start=#{page_index * PAGE_SIZE}&sz=#{PAGE_SIZE}"
-        page.go_to(url)
-        sleep(rand(1.5..3.0)) # human-like pacing to reduce bot-mitigation triggers
-        page.network.wait_for_idle(timeout: 20) rescue nil
-
-        tiles = page.css(".product-tile")
+        tiles = load_tiles(page, url)
+        # Only stop when a retried page is still genuinely empty. A page that merely
+        # rendered slowly used to read as the end of the category: in production
+        # (slower container, slower Chromium) this cut the crawl at 320 of ~3,580
+        # products and reported the other 1,800 as disappeared.
         break if tiles.empty?
 
         new_count = 0
