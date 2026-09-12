@@ -9,6 +9,12 @@
 
 CITY = "Morelia, Michoacán".freeze
 
+# Discard a run that finds under half of what the previous one did. Below the
+# baseline threshold the pharmacy is too small for the ratio to mean anything -
+# costco legitimately moves between 92 and 95 listings.
+MAX_ACCEPTABLE_SHRINK = 0.5
+MIN_BASELINE_FOR_SHRINK_CHECK = 200
+
 only = ENV["ONLY"].to_s.split(",").map(&:strip).reject(&:empty?)
 pharmacies = only.any? ? Pharmacy.active.where(slug: only) : Pharmacy.active
 abort "No pharmacies matched #{only.inspect}" if pharmacies.empty?
@@ -86,6 +92,23 @@ pharmacies.each do |pharmacy|
 
   begin
     count = crawler_class.new(pharmacy: pharmacy, crawl_run: crawl_run).call
+
+    # A crawl that collapses against its predecessor is nearly always truncated, not
+    # a real inventory change - a site does not drop 80% of its catalogue overnight.
+    # Keeping it would make aggregation deactivate every unreached product, so the
+    # run is discarded and the previous (good) one stays authoritative. Seen on
+    # guadalajara, which returns ~3,580 products locally but stopped at 320 and 440
+    # from production.
+    if previous_prices.size >= MIN_BASELINE_FOR_SHRINK_CHECK &&
+       count < previous_prices.size * MAX_ACCEPTABLE_SHRINK
+      log.call "#{pharmacy.slug}: DISCARDED - only #{count} listings vs #{previous_prices.size} before " \
+               "(looks truncated, not a real change). Previous run kept."
+      RawListing.where(crawl_run: crawl_run).delete_all
+      crawl_run.destroy
+      totals[:failed] << "#{pharmacy.slug} (truncated)"
+      next
+    end
+
     crawl_run.update!(status: "succeeded", finished_at: Time.current, items_found: count)
 
     current = RawListing.where(crawl_run: crawl_run)

@@ -11,6 +11,16 @@ module Crawlers
       "/farmacia/medicina"
     ].freeze
 
+    # KNOWN LIMITATION (2026-09-12): this crawler reaches all ~3,580 products from a
+    # residential IP but stops early from Fly's datacentre IP - two production runs
+    # ended at 320 and 440 products with no error raised, while the same code and the
+    # same page size got 3,580 locally. The pagination endpoint itself answers
+    # correctly when probed from production, so the likely cause is bot mitigation
+    # re-serving an already-seen page once requests come from a datacentre, which
+    # trips the "no new products" exit below. Production therefore keeps using the
+    # older 2,120-product run rather than a truncated one; a short run must NOT be
+    # aggregated, because it reports every unreached product as disappeared.
+    #
     # The category reports ~3,580 products. At 20 pages x 20 per page the crawler
     # stopped at exactly 400 and reported the other 3,180 as "disappeared" - the cap
     # was the limit, not the catalogue. The loop already stops on its own when a page
