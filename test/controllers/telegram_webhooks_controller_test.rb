@@ -75,6 +75,30 @@ class TelegramWebhooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, @conversation.messages.count
   end
 
+  test "sending online sets the status instead of replying to anyone" do
+    post_webhook(text: "online")
+
+    assert ChatStatus.online?
+    assert_equal 1, @conversation.messages.count, "a status word must not be posted to a visitor"
+  end
+
+  test "sending offline sets the status back" do
+    ChatStatus.set!(true)
+
+    post_webhook(text: "offline")
+
+    assert_not ChatStatus.online?
+    assert_equal 1, @conversation.messages.count
+  end
+
+  # A real reply that happens to contain the word must still reach the visitor.
+  test "a sentence containing a status word is treated as a reply" do
+    post_webhook(text: "Estoy online ahora, sí tenemos ibuprofeno",
+                 reply_to: "Responder: https://farmavea.com/admin/chats/#{@conversation.id}")
+
+    assert_equal 2, @conversation.messages.count
+  end
+
   # Without an API key the translator returns nil, so the operator's own words are
   # posted. A reply in the wrong language beats no reply.
   test "an untranslatable reply is still delivered in the operator's own words" do

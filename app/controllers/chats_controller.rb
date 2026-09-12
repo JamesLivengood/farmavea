@@ -11,12 +11,15 @@ class ChatsController < ApplicationController
   def show
     conversation = find_conversation
     if conversation.nil?
-      render json: { messages: [] }
+      # Presence is still useful with no conversation: a first-time visitor needs to
+      # know whether anyone is there before deciding to type.
+      render json: { messages: [], online: ChatStatus.online? }
       return
     end
 
     render json: {
       token: conversation.token,
+      online: ChatStatus.online?,
       messages: conversation.messages.map { |m| serialize(m) }
     }
   end
@@ -38,9 +41,11 @@ class ChatsController < ApplicationController
       return
     end
 
-    # Only stored when the visitor actually typed one; never inferred.
+    # Only stored when the visitor actually typed them; never inferred.
     email = params[:email].to_s.strip
+    phone = params[:phone].to_s.strip
     conversation.visitor_email = email if email.present?
+    conversation.visitor_phone = phone if phone.present?
     conversation.save!
 
     message = conversation.messages.create!(author: "visitor", body: body)

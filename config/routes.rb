@@ -27,6 +27,7 @@ Rails.application.routes.draw do
   namespace :admin do
     resources :chats, only: [ :index, :show ] do
       post :reply, on: :member
+      post :toggle_status, on: :collection
     end
   end
 

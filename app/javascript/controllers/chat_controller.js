@@ -14,7 +14,9 @@ const POLL_MS_CLOSED = 30000
 
 export default class extends Controller {
   static targets = ["panel", "button", "label", "badge", "log", "empty",
-                    "form", "message", "email", "emailRow", "status", "submit"]
+                    "form", "message", "email", "phone", "contactRow", "contactPrompt",
+                    "presence", "presenceDot", "presenceLabel", "presenceNote",
+                    "status", "submit"]
   static values = { endpoint: String }
 
   connect() {
@@ -50,6 +52,10 @@ export default class extends Controller {
     if (this.token) {
       this.load({ quiet: true })
       this.startPolling()
+    } else {
+      // No conversation yet, but presence still matters: someone deciding whether
+      // to type needs to know if anyone is there to answer.
+      this.loadPresence()
     }
   }
 
@@ -126,7 +132,8 @@ export default class extends Controller {
         body: JSON.stringify({
           token: this.token,
           body: body,
-          email: this.hasEmailTarget ? this.emailTarget.value.trim() : ""
+          email: this.hasEmailTarget ? this.emailTarget.value.trim() : "",
+          phone: this.hasPhoneTarget ? this.phoneTarget.value.trim() : ""
         })
       })
 
@@ -144,10 +151,10 @@ export default class extends Controller {
       this.seenCount = this.renderedCount
       this.writeSeenCount(this.seenCount)
       this.statusTarget.textContent = "Mensaje enviado. Te responderemos en cuanto podamos."
-      // The email is only needed once per conversation.
-      if (this.hasEmailRowTarget && this.emailTarget.value.trim() !== "") {
-        this.emailRowTarget.hidden = true
-      }
+      // Contact details are only needed once per conversation.
+      const gaveContact = (this.hasEmailTarget && this.emailTarget.value.trim() !== "") ||
+                          (this.hasPhoneTarget && this.phoneTarget.value.trim() !== "")
+      if (this.hasContactRowTarget && gaveContact) this.contactRowTarget.hidden = true
       this.startPolling()
     } catch (error) {
       this.statusTarget.textContent = "No se pudo enviar. Revisa tu conexión."
@@ -168,6 +175,7 @@ export default class extends Controller {
 
       const data = await response.json()
       const messages = data.messages || []
+      if (typeof data.online === "boolean") this.renderPresence(data.online)
 
       // A reply arrived while the panel was shut - badge the button. Counted
       // against everything the visitor has actually seen, not just this poll, so
@@ -183,6 +191,41 @@ export default class extends Controller {
       this.renderAll(messages)
     } catch (error) {
       // Silent: a failed poll should never disturb the page.
+    }
+  }
+
+  // Presence only - used before a conversation exists, where load() would bail for
+  // want of a token.
+  async loadPresence() {
+    try {
+      const response = await fetch(this.endpointValue, { headers: { Accept: "application/json" } })
+      if (!response.ok) return
+
+      const data = await response.json()
+      if (typeof data.online === "boolean") this.renderPresence(data.online)
+    } catch (error) {
+      // Leave the neutral placeholder rather than guessing.
+    }
+  }
+
+  renderPresence(online) {
+    if (!this.hasPresenceLabelTarget) return
+
+    this.presenceLabelTarget.textContent = online ? "En línea" : "Desconectado"
+    this.presenceDotTarget.className = online
+      ? "w-1.5 h-1.5 rounded-full bg-emerald-300"
+      : "w-1.5 h-1.5 rounded-full bg-slate-300"
+
+    if (this.hasPresenceNoteTarget) {
+      this.presenceNoteTarget.textContent = online
+        ? "Escríbenos y te respondemos"
+        : "Déjanos tu mensaje y te contactamos en cuanto podamos"
+    }
+
+    // Offline, the contact fields are how they get an answer at all - so say so
+    // rather than leaving them looking optional.
+    if (this.hasContactPromptTarget) {
+      this.contactPromptTarget.classList.toggle("hidden", online)
     }
   }
 

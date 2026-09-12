@@ -26,7 +26,9 @@ module Chat
         return false unless configured?
 
         conversation = message.chat_conversation
-        contact = conversation.visitor_email.presence || "sin correo"
+        # Email and/or phone, whichever the visitor left - this is the only way to
+        # reach them once they close the page.
+        contact = conversation.contact_line
         original = message.body.truncate(900)
 
         # Shown alongside the original rather than replacing it: the operator needs

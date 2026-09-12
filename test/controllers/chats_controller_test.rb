@@ -49,6 +49,41 @@ class ChatsControllerTest < ActionDispatch::IntegrationTest
     assert_response :too_many_requests
   end
 
+  test "a phone number is stored and reaches the operator alongside the email" do
+    post chat_path, params: { body: "¿Tienen omeprazol?", email: "a@example.com", phone: "+52 443 123 4567" },
+         as: :json
+
+    conversation = ChatConversation.last
+    assert_equal "a@example.com", conversation.visitor_email
+    assert_equal "+52 443 123 4567", conversation.visitor_phone
+    # This string is what gets sent to Telegram.
+    assert_equal "a@example.com · +52 443 123 4567", conversation.contact_line
+  end
+
+  test "a phone number alone is enough to be reachable" do
+    post chat_path, params: { body: "¿Tienen omeprazol?", phone: "4431234567" }, as: :json
+
+    assert_equal "4431234567", ChatConversation.last.visitor_phone
+    assert_equal "4431234567", ChatConversation.last.contact_line
+  end
+
+  test "leaving no contact details is still allowed" do
+    post chat_path, params: { body: "¿Tienen omeprazol?" }, as: :json
+
+    assert_response :created
+    assert_equal "sin contacto", ChatConversation.last.contact_line
+  end
+
+  # A visitor deciding whether to type needs to know if anyone is there, before any
+  # conversation exists.
+  test "presence is reported even with no conversation" do
+    ChatStatus.set!(true)
+
+    get chat_path
+
+    assert_equal true, JSON.parse(@response.body)["online"]
+  end
+
   test "the email is stored only when the visitor supplies one" do
     post chat_path, params: { body: "Sin correo" }, as: :json
     assert_nil ChatConversation.last.visitor_email

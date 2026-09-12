@@ -27,6 +27,14 @@ module Admin
       @conversation.messages.from_visitors.where(read_at: nil).update_all(read_at: Time.current)
     end
 
+    # Availability can also be flipped from Telegram by sending "online"/"offline" -
+    # see TelegramWebhooksController. Same single row either way.
+    def toggle_status
+      status = ChatStatus.set!(params[:online] == "1")
+      redirect_back fallback_location: admin_chats_path,
+                    notice: status.online? ? "Ahora apareces en línea." : "Ahora apareces desconectado."
+    end
+
     def reply
       conversation = ChatConversation.find(params[:id])
       body = params[:body].to_s.strip

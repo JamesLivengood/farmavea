@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_12_181345) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_12_213313) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -21,6 +21,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_12_181345) do
     t.string "token", null: false
     t.datetime "updated_at", null: false
     t.string "visitor_email"
+    t.string "visitor_phone"
     t.index ["last_message_at"], name: "index_chat_conversations_on_last_message_at"
     t.index ["token"], name: "index_chat_conversations_on_token", unique: true
   end
@@ -34,6 +35,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_12_181345) do
     t.datetime "updated_at", null: false
     t.index ["chat_conversation_id", "created_at"], name: "index_chat_messages_on_chat_conversation_id_and_created_at"
     t.index ["chat_conversation_id"], name: "index_chat_messages_on_chat_conversation_id"
+  end
+
+  create_table "chat_statuses", force: :cascade do |t|
+    t.datetime "changed_at"
+    t.datetime "created_at", null: false
+    t.boolean "online", default: false, null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "crawl_runs", force: :cascade do |t|

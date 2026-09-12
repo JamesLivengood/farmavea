@@ -20,8 +20,16 @@
        class="w-[min(21rem,calc(100vw-2.5rem))] bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-900/10 overflow-hidden flex flex-col">
 
     <div class="bg-emerald-600 px-4 py-3 text-white shrink-0">
-      <p class="font-semibold text-sm">¿Tienes dudas?</p>
-      <p class="text-emerald-50 text-xs mt-0.5">Escríbenos y te respondemos</p>
+      <div class="flex items-center justify-between gap-2">
+        <p class="font-semibold text-sm">¿Tienes dudas?</p>
+        <%# Live status, so nobody sits waiting on a reply that is hours away. %>
+        <span data-chat-target="presence"
+              class="inline-flex items-center gap-1.5 text-[11px] font-medium bg-white/15 rounded-full px-2 py-0.5">
+          <span data-chat-target="presenceDot" class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+          <span data-chat-target="presenceLabel">—</span>
+        </span>
+      </div>
+      <p data-chat-target="presenceNote" class="text-emerald-50 text-xs mt-0.5">Escríbenos y te respondemos</p>
     </div>
 
     <div class="px-4 py-2.5 bg-amber-50 border-b border-amber-200 shrink-0">
@@ -57,13 +65,25 @@
                   class="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"></textarea>
       </label>
 
-      <label data-chat-target="emailRow" class="block">
-        <span class="sr-only">Tu correo (opcional)</span>
-        <input type="email"
-               data-chat-target="email"
-               placeholder="Tu correo (opcional, para responderte)"
-               class="w-full text-xs rounded-lg border border-slate-200 px-3 py-1.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none">
-      </label>
+      <div data-chat-target="contactRow" class="space-y-1.5">
+        <p data-chat-target="contactPrompt" class="text-[11px] text-slate-500 hidden">
+          Déjanos tu correo o teléfono y te contactamos en cuanto podamos.
+        </p>
+        <label class="block">
+          <span class="sr-only">Tu correo (opcional)</span>
+          <input type="email"
+                 data-chat-target="email"
+                 placeholder="Tu correo (opcional)"
+                 class="w-full text-xs rounded-lg border border-slate-200 px-3 py-1.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none">
+        </label>
+        <label class="block">
+          <span class="sr-only">Tu teléfono (opcional)</span>
+          <input type="tel"
+                 data-chat-target="phone"
+                 placeholder="Tu teléfono o WhatsApp (opcional)"
+                 class="w-full text-xs rounded-lg border border-slate-200 px-3 py-1.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none">
+        </label>
+      </div>
 
       <div class="flex items-center justify-between gap-2">
         <p data-chat-target="status" class="text-[11px] text-slate-400" role="status"></p>

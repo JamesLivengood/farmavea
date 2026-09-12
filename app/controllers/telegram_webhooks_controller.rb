@@ -22,6 +22,18 @@ class TelegramWebhooksController < ApplicationController
     text = message[:text].to_s.strip
     return head(:ok) if text.blank?
 
+    # "online" / "offline" sets availability rather than replying to anyone. Checked
+    # before the reply path so a bare status word is never posted to a visitor.
+    status = ChatStatus.parse_command(text)
+    unless status.nil?
+      ChatStatus.set!(status)
+      Chat::TelegramNotifier.send_text(
+        status ? "🟢 En línea. El chat dirá que estás disponible." :
+                 "⚪️ Desconectado. A los visitantes se les pedirá dejar su correo o teléfono."
+      )
+      return head(:ok)
+    end
+
     conversation = conversation_for(message)
     if conversation.nil?
       notify_unmatched(message)
