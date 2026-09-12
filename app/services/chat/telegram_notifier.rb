@@ -27,14 +27,18 @@ module Chat
 
         conversation = message.chat_conversation
         contact = conversation.visitor_email.presence || "sin correo"
-        text = <<~MSG
-          💬 Nuevo mensaje en Farmavea
+        original = message.body.truncate(900)
 
-          #{message.body.truncate(900)}
+        # Shown alongside the original rather than replacing it: the operator needs
+        # the visitor's own words to reply in, and a translation is a reading aid,
+        # not a substitute. nil when unavailable or already in English.
+        english = Translator.to_english(original)
 
-          Contacto: #{contact}
-          Responder: #{admin_url(conversation)}
-        MSG
+        text = +"💬 Nuevo mensaje en Farmavea\n\n"
+        text << "🇲🇽 #{original}\n"
+        text << "🇺🇸 #{english}\n" if english.present?
+        text << "\nContacto: #{contact}\n"
+        text << "Responder: #{admin_url(conversation)}"
 
         deliver(text)
       end

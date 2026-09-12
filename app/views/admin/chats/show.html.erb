@@ -37,6 +37,13 @@
       <%= f.text_area :body, rows: 3, maxlength: ChatMessage::MAX_LENGTH, required: true,
             placeholder: "Escribe tu respuesta…",
             class: "w-full text-sm rounded-lg border border-slate-300 px-3 py-2 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none resize-none" %>
+      <% if Chat::Translator.configured? %>
+        <label class="flex items-center gap-2 text-xs text-slate-600">
+          <%= check_box_tag :translate, "1", true, class: "rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" %>
+          Escribo en inglés — traducir al español antes de enviar
+        </label>
+      <% end %>
+
       <div class="flex items-center justify-between gap-3">
         <p class="text-[11px] text-slate-400">
           Recuerda: el chat no es asesoría médica. Para dudas clínicas, remite a un
