@@ -37,6 +37,11 @@ module Crawlers
     # the medications most likely to matter first, with the remainder covered over
     # subsequent days rather than attempted all at once.
     MAX_PRODUCTS = ENV.fetch("DEL_AHORRO_MAX_PRODUCTS", 300).to_i
+    # A hard ceiling on how long one run may take. 300 products take ~15 minutes
+    # locally but over 45 in production, where slow renders trigger retries - and a
+    # run that never returns holds a browser and degrades the site it shares a
+    # machine with.
+    MAX_RUN_DURATION = ENV.fetch("DEL_AHORRO_MAX_MINUTES", 25).to_i.minutes
 
     # Rendering is intermittently flaky on a long-lived shared browser (observed:
     # .product-info-main sometimes fails to appear at all on a page that renders fine
@@ -55,11 +60,31 @@ module Crawlers
 
     private
 
+    # Seam for tests, which advance this instead of sleeping.
+    def current_time = Time.current
+
     def fetch_listings
       product_urls = prioritized_product_urls.first(MAX_PRODUCTS)
-      product_urls.each_slice(PRODUCTS_PER_BROWSER).flat_map do |url_batch|
-        scrape_batch(url_batch)
+      deadline = current_time + MAX_RUN_DURATION
+      results = []
+
+      product_urls.each_slice(PRODUCTS_PER_BROWSER) do |url_batch|
+        # Stop cleanly and keep what we have. A page load can hang with no timeout
+        # firing - one production run sat at 0.4% CPU for 45 minutes and was killed,
+        # losing all of it, because everything is persisted in one batch at the end.
+        # Partial results from a bounded run are worth far more than none.
+        if current_time > deadline
+          Rails.logger.warn(
+            "[#{self.class.name}] stopping at #{results.size} products: hit the " \
+            "#{MAX_RUN_DURATION.inspect} limit with #{product_urls.size} planned."
+          )
+          break
+        end
+
+        results.concat(scrape_batch(url_batch))
       end
+
+      results
     end
 
     # Orders discovered URLs so a capped daily run covers the medications most

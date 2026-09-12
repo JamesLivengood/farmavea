@@ -81,5 +81,61 @@ module Crawlers
       assert_empty(next_batch & urls.first(4),
         "the next run must move on to unseen products, not repeat the previous batch")
     end
+
+    # Records what it scraped and advances its own clock, so the deadline can be
+    # exercised without waiting 25 real minutes. Time.current is overridden rather
+    # than slept through, keeping the test instant.
+    class SlowDelAhorro < FakeDelAhorro
+      attr_reader :batches_scraped
+
+      def initialize(pharmacy:, crawl_run:, urls:, seconds_per_batch:)
+        super(pharmacy: pharmacy, crawl_run: crawl_run, urls: urls)
+        @seconds_per_batch = seconds_per_batch
+        @batches_scraped = 0
+        @elapsed = 0
+        @started_at = Time.current
+      end
+
+      private
+
+      # The crawler reads the clock to set and check its deadline; this makes time
+      # pass only when a batch is "scraped".
+      def current_time = @started_at + @elapsed
+
+      def scrape_batch(url_batch)
+        @batches_scraped += 1
+        @elapsed += @seconds_per_batch
+        url_batch.map { |url| { raw_name: "Producto #{url[-8..]}", price_cents: 1000, product_url: url } }
+      end
+    end
+
+    # A run that never returns holds a browser open and degrades the site sharing its
+    # machine; one production run sat at 0.4% CPU for 45 minutes and lost everything
+    # when killed, because results are persisted only at the end.
+    test "a run that exceeds its time limit stops and keeps what it already scraped" do
+      pharmacy = create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro")
+      urls = (1..75).map { |i| "https://www.fahorro.com/producto-#{i}-100-mg-10-tabletas.html" }
+      # 3 batches of 25; at 20 minutes each the deadline falls partway through.
+      crawler = SlowDelAhorro.new(pharmacy: pharmacy, crawl_run: create_crawl_run(pharmacy: pharmacy),
+                                  urls: urls, seconds_per_batch: 20.minutes)
+
+      count = crawler.call
+
+      assert_equal 2, crawler.batches_scraped, "should stop once the deadline has passed"
+      assert_equal 50, count, "the products scraped before the deadline must still be persisted"
+      assert_equal 50, RawListing.where(pharmacy: pharmacy).count
+    end
+
+    test "a run that finishes within the limit scrapes everything" do
+      pharmacy = create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro")
+      urls = (1..75).map { |i| "https://www.fahorro.com/producto-#{i}-100-mg-10-tabletas.html" }
+      crawler = SlowDelAhorro.new(pharmacy: pharmacy, crawl_run: create_crawl_run(pharmacy: pharmacy),
+                                  urls: urls, seconds_per_batch: 1.second)
+
+      count = crawler.call
+
+      assert_equal 3, crawler.batches_scraped
+      assert_equal 75, count
+    end
   end
 end
