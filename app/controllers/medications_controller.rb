@@ -20,6 +20,9 @@ class MedicationsController < ApplicationController
   def index
     @city = DEFAULT_CITY
     @common_offers = common_medication_offers(city: @city)
+    # Drives the freshness badge. The most recent scrape behind a visible offer is
+    # the honest answer to "how current is this page?".
+    @last_updated_at = Offer.active.purchasable.where(city: @city).maximum(:scraped_at)
 
     # Everything except the featured medications, paginated in the DATABASE.
     # Loading the whole list and slicing it in Ruby meant fetching ~1,580 offers

@@ -1,24 +1,40 @@
 require "test_helper"
 
-# The nightly crawl runs unattended on the server. These guard the property that
-# makes that safe: it must never trigger Claude aggregation, which is the only step
-# that spends money and has no per-run cap.
+# The nightly crawl runs unattended on the server. These cover the two properties
+# that matter: it refreshes every pharmacy the site displays (scoping it to one
+# left the homepage showing ten-day-old prices under "Actualizado hoy"), and it
+# still cannot spend money without an explicit opt-in.
 class DailyPriceUpdateJobTest < ActiveJob::TestCase
-  test "crawls only Del Ahorro, not every pharmacy" do
+  test "crawls every pharmacy the site displays" do
     create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro")
     create_pharmacy(slug: "benavides", name: "Benavides")
     create_pharmacy(slug: "guadalajara", name: "Guadalajara")
 
-    assert_enqueued_jobs 1, only: CrawlPharmacyJob do
+    assert_enqueued_jobs 3, only: CrawlPharmacyJob do
       DailyPriceUpdateJob.perform_now
     end
 
-    job = enqueued_jobs.find { |j| j["job_class"] == "CrawlPharmacyJob" }
-    assert_equal "del_ahorro", job["arguments"].first,
-      "only Del Ahorro has a crawl backlog - the others are already fully crawled each pass"
+    slugs = enqueued_jobs.select { |j| j["job_class"] == "CrawlPharmacyJob" }
+                         .map { |j| j["arguments"].first }
+    assert_equal %w[benavides del_ahorro guadalajara], slugs.sort
   end
 
-  test "skips Del Ahorro when it has been deactivated" do
+  # A pharmacy the site hides (unconfirmed Morelia presence) is still crawled by
+  # hand when wanted, but spending the nightly budget on it would slow the refresh
+  # of the ones people actually see.
+  test "does not crawl pharmacies that are not displayed" do
+    create_pharmacy(slug: "benavides", name: "Benavides")
+    create_pharmacy(slug: "farmacias_abc", name: "Farmacias ABC")
+
+    DailyPriceUpdateJob.perform_now
+
+    slugs = enqueued_jobs.select { |j| j["job_class"] == "CrawlPharmacyJob" }
+                         .map { |j| j["arguments"].first }
+    assert_includes slugs, "benavides"
+    assert_not_includes slugs, "farmacias_abc"
+  end
+
+  test "skips a pharmacy that has been deactivated" do
     create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro", active: false)
 
     assert_no_enqueued_jobs only: CrawlPharmacyJob do
@@ -26,16 +42,43 @@ class DailyPriceUpdateJobTest < ActiveJob::TestCase
     end
   end
 
-  test "enqueues crawls with aggregation turned off" do
+  # Crawling without aggregating refreshes the raw data and changes nothing on the
+  # site - which is how prices went stale while crawls kept "succeeding".
+  test "enqueues crawls that aggregate, so fresh prices reach the site" do
     create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro")
 
     DailyPriceUpdateJob.perform_now
 
     job = enqueued_jobs.find { |j| j["job_class"] == "CrawlPharmacyJob" }
     assert job, "expected a CrawlPharmacyJob to be enqueued"
-    options = job["arguments"].last
-    assert_equal false, options["aggregate"],
-      "the scheduled crawl must not run Claude aggregation - that would spend money unattended"
+    assert_equal true, job["arguments"].last["aggregate"]
+  end
+
+  # Aggregating nightly is only safe because the paid tier needs an explicit
+  # opt-in. If that guard ever disappears, this is what should fail.
+  test "aggregation cannot reach the paid API without ALLOW_CLAUDE_API" do
+    original = ENV.delete("ALLOW_CLAUDE_API")
+    pharmacy = create_pharmacy(slug: "benavides")
+    listing = create_raw_listing(pharmacy: pharmacy, raw_name: "Kuryent Xyz 99")
+
+    result = Aggregation::MedicationNormalizer.new(pharmacy: pharmacy, raw_listings: [ listing ]).call
+
+    assert_nil result[listing.id],
+      "an unresolvable name must stay unresolved rather than being billed to the API"
+  ensure
+    ENV["ALLOW_CLAUDE_API"] = original if original
+  end
+
+  test "pharmacies are staggered rather than all fired at once" do
+    create_pharmacy(slug: "benavides", name: "Benavides")
+    create_pharmacy(slug: "del_ahorro", name: "Farmacia del Ahorro")
+
+    DailyPriceUpdateJob.perform_now
+
+    waits = enqueued_jobs.select { |j| j["job_class"] == "CrawlPharmacyJob" }
+                         .map { |j| j["scheduled_at"] }
+    assert_equal waits.uniq.size, waits.size,
+      "concurrent headless-browser crawls make the site unresponsive on a small machine"
   end
 
   # A stand-in crawler that does nothing, so these tests exercise the job's

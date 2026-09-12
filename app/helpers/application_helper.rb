@@ -12,6 +12,21 @@ module ApplicationHelper
     URI.join(canonical_base_url, "/og-image.png").to_s
   end
 
+  # How old the displayed prices actually are. Said plainly rather than optimistically:
+  # someone deciding where to drive for a medication needs to know whether the figure
+  # is from this morning or last week.
+  def price_freshness_label(scraped_at)
+    return "Sin precios recientes" if scraped_at.blank?
+
+    days = (Date.current - scraped_at.to_date).to_i
+    case days
+    when 0 then "Actualizado hoy"
+    when 1 then "Actualizado ayer"
+    when 2..6 then "Actualizado hace #{days} días"
+    else "Precios de hace más de una semana"
+    end
+  end
+
   SPANISH_MONTHS = %w[
     enero febrero marzo abril mayo junio
     julio agosto septiembre octubre noviembre diciembre

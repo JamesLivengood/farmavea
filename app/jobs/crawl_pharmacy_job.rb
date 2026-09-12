@@ -26,13 +26,15 @@ class CrawlPharmacyJob < ApplicationJob
   retry_on Crawlers::BaseCrawler::CrawlError, wait: 5.minutes, attempts: 2
 
   # aggregate: whether to hand the crawled listings straight to
-  # NormalizeAndBuildOffersJob, which calls the paid Claude API.
+  # NormalizeAndBuildOffersJob, which turns them into the offers people actually
+  # see. Without it a crawl refreshes the raw data and changes nothing on the site.
   #
-  # Defaults to FALSE so the nightly scheduled crawl only gathers raw data, which
-  # costs nothing. Aggregation is run deliberately (script/aggregate_latest.rb)
-  # rather than unattended: it's the only step that spends money, it has no
-  # per-run cap, and a pharmacy redesign or crawler bug could turn one quiet night
-  # into thousands of new names and a surprise bill.
+  # This used to default to false because aggregation could reach the paid Claude
+  # API, and an unattended run after a pharmacy redesign could produce thousands of
+  # new names and a surprise bill. That risk now lives behind ALLOW_CLAUDE_API
+  # (see MedicationNormalizer#use_claude?), which is unset in production - so the
+  # nightly path runs the free tiers only and unmatched names wait for a manual
+  # export. Aggregating nightly is what keeps displayed prices current.
   def perform(pharmacy_slug, city:, aggregate: false)
     pharmacy = Pharmacy.find_by!(slug: pharmacy_slug)
     crawler_class = CRAWLER_CLASSES.fetch(pharmacy_slug) { raise ArgumentError, "No crawler for #{pharmacy_slug}" }

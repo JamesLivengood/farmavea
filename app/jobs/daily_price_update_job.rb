@@ -1,25 +1,32 @@
 # Nightly crawl, scheduled in config/recurring.yml.
 #
-# Scoped to Farmacia del Ahorro only. Every other pharmacy exposes its full
-# catalog in one pass and is already fully crawled, but Del Ahorro's category
-# pages are WAF-blocked, so DelAhorroCrawler works through its sitemap a capped
-# ~300 products per run (see DelAhorroCrawler::MAX_PRODUCTS) and skips anything
-# already scraped that day. Running it nightly is what fills in the remaining
-# backlog - roughly 715 of ~4,400 products so far.
+# Crawls every pharmacy the site actually displays. This was scoped to Del Ahorro
+# alone for a while, on the reasoning that the others were "already fully crawled" -
+# true of their catalogues, but not of their prices, which is the entire point of
+# the site. The result was a homepage saying "Actualizado hoy" over figures ten days
+# old, so the scope is now the displayed set.
 #
-# Crawls only - it does NOT run Claude aggregation, so it costs nothing to run
-# unattended. Fresh prices reach the site when aggregation is run deliberately
-# (bin/rails runner script/aggregate_latest.rb), which is the only step that
-# spends money and has no per-run cap.
+# Crawling only. Aggregation - the step that turns listings into the offers people
+# see - is queued separately and deliberately does NOT enable the paid Claude tier:
+# see NormalizeAndBuildOffersJob and MedicationNormalizer#use_claude?. Unmatched
+# names wait for a manual export instead of billing unattended.
+#
+# Pharmacies are staggered rather than fired at once: the headless browser shares a
+# small machine with the web server, and several concurrent crawls made the site
+# unresponsive.
 class DailyPriceUpdateJob < ApplicationJob
   queue_as :crawling
 
   CITY = "Morelia, Michoacán".freeze
-  PHARMACY_SLUGS = %w[del_ahorro].freeze
+
+  # Minutes between each pharmacy's crawl. Del Ahorro alone can take 25-40 minutes,
+  # so this spreads the night's work rather than stacking it.
+  STAGGER = 12.minutes
 
   def perform
-    Pharmacy.active.where(slug: PHARMACY_SLUGS).find_each do |pharmacy|
-      CrawlPharmacyJob.perform_later(pharmacy.slug, city: CITY, aggregate: false)
+    Pharmacy.active.serving_morelia.order(:slug).each_with_index do |pharmacy, index|
+      CrawlPharmacyJob.set(wait: STAGGER * index)
+                      .perform_later(pharmacy.slug, city: CITY, aggregate: true)
     end
   end
 end
