@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc><%= ApplicationHelper::CANONICAL_HOST %>/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+<% @medications.each do |medication| %>
+  <url>
+    <loc><%= ApplicationHelper::CANONICAL_HOST %>/medications/<%= medication.id %></loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+<% end %>
+  <url>
+    <loc><%= ApplicationHelper::CANONICAL_HOST %>/aviso-de-privacidad</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.1</priority>
+  </url>
+</urlset>

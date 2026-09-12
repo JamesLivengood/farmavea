@@ -1,1 +1,12 @@
 # See https://www.robotstxt.org/robotstxt.html for documentation on how to use the robots.txt file
+
+User-agent: *
+# /autocomplete is a JSON endpoint for the search box's dropdown - crawling it
+# produces no indexable pages and burns crawl budget the medication pages need.
+Disallow: /autocomplete
+# /search results are generated from arbitrary query strings, so they are an
+# unbounded space of near-duplicate pages. The medication pages they link to are
+# in the sitemap and get indexed directly.
+Disallow: /search
+
+Sitemap: https://farmavea.com/sitemap.xml

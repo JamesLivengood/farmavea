@@ -44,4 +44,37 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     tomorrow = PageVisit.visitor_hash_for(ip: "203.0.113.9", user_agent: "UA", on: Date.current + 1)
     assert_not_equal today, tomorrow
   end
+
+  # The homepage links only a few dozen medications, so without a sitemap the other
+  # ~2,000 are reachable to search engines only by luck.
+  test "the sitemap lists medications that have a purchasable offer" do
+    medication = create_medication(canonical_name: "Paracetamol", strength_value: 500, strength_unit: "mg")
+    create_offer(medication: medication, pharmacy: create_pharmacy(slug: "benavides"))
+
+    get sitemap_path
+
+    assert_response :success
+    assert_equal "application/xml", @response.media_type
+    assert_includes @response.body, "https://farmavea.com/medications/#{medication.id}"
+    assert_includes @response.body, "https://farmavea.com/"
+  end
+
+  test "a medication with no purchasable offer is left out of the sitemap" do
+    listed = create_medication(canonical_name: "Ibuprofeno", strength_value: 400, strength_unit: "mg")
+    create_offer(medication: listed, pharmacy: create_pharmacy(slug: "benavides"))
+    # No offer at all: a page with no prices is a poor search result.
+    unlisted = create_medication(canonical_name: "Fantasmol", strength_value: 10, strength_unit: "mg")
+
+    get sitemap_path
+
+    assert_includes @response.body, "/medications/#{listed.id}"
+    assert_not_includes @response.body, "/medications/#{unlisted.id}"
+  end
+
+  test "robots.txt points crawlers at the sitemap" do
+    robots = Rails.root.join("public", "robots.txt").read
+
+    assert_includes robots, "Sitemap: https://farmavea.com/sitemap.xml"
+    assert_includes robots, "Disallow: /autocomplete"
+  end
 end
