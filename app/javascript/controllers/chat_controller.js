@@ -31,6 +31,9 @@ export default class extends Controller {
     // builds a new one: starting from 0 would re-badge every message they had
     // already read on the previous page.
     this.seenCount = this.readSeenCount()
+    // Assume offline until told otherwise: requiring contact details when they are
+    // not needed is a minor annoyance, but letting a message vanish unanswered is not.
+    this.online = false
     this.boundEscape = this.closeIfEscape.bind(this)
     // Mobile browsers throttle or suspend timers in a background tab, and some kill
     // them outright - so a phone left on the page can come back with a dead poller.
@@ -119,6 +122,13 @@ export default class extends Controller {
     const body = this.messageTarget.value.trim()
     if (body === "") return
 
+    if (this.needsContact()) {
+      this.statusTarget.textContent = "Déjanos tu correo o teléfono para poder responderte."
+      if (this.hasContactPromptTarget) this.contactPromptTarget.classList.remove("hidden")
+      if (this.hasEmailTarget) this.emailTarget.focus()
+      return
+    }
+
     this.submitTarget.disabled = true
     this.statusTarget.textContent = "Enviando…"
 
@@ -154,6 +164,7 @@ export default class extends Controller {
       // Contact details are only needed once per conversation.
       const gaveContact = (this.hasEmailTarget && this.emailTarget.value.trim() !== "") ||
                           (this.hasPhoneTarget && this.phoneTarget.value.trim() !== "")
+      if (gaveContact) this.contactGiven = true
       if (this.hasContactRowTarget && gaveContact) this.contactRowTarget.hidden = true
       this.startPolling()
     } catch (error) {
@@ -176,6 +187,10 @@ export default class extends Controller {
       const data = await response.json()
       const messages = data.messages || []
       if (typeof data.online === "boolean") this.renderPresence(data.online)
+      if (data.contact_given) {
+        this.contactGiven = true
+        if (this.hasContactRowTarget) this.contactRowTarget.hidden = true
+      }
 
       // A reply arrived while the panel was shut - badge the button. Counted
       // against everything the visitor has actually seen, not just this poll, so
@@ -203,12 +218,17 @@ export default class extends Controller {
 
       const data = await response.json()
       if (typeof data.online === "boolean") this.renderPresence(data.online)
+      if (data.contact_given) {
+        this.contactGiven = true
+        if (this.hasContactRowTarget) this.contactRowTarget.hidden = true
+      }
     } catch (error) {
       // Leave the neutral placeholder rather than guessing.
     }
   }
 
   renderPresence(online) {
+    this.online = online
     if (!this.hasPresenceLabelTarget) return
 
     this.presenceLabelTarget.textContent = online ? "En línea" : "Desconectado"
@@ -227,6 +247,26 @@ export default class extends Controller {
     if (this.hasContactPromptTarget) {
       this.contactPromptTarget.classList.toggle("hidden", online)
     }
+
+    // "(opcional)" would be a lie while one of them is required.
+    if (this.hasEmailTarget) {
+      this.emailTarget.placeholder = online ? "Tu correo (opcional)" : "Tu correo"
+    }
+    if (this.hasPhoneTarget) {
+      this.phoneTarget.placeholder = online ? "Tu teléfono o WhatsApp (opcional)" : "Tu teléfono o WhatsApp"
+    }
+  }
+
+  // True when this visitor still owes us a way to reach them. Mirrors the server
+  // check in ChatsController#requires_contact? - this one exists to catch it before
+  // the round trip, not instead of it.
+  needsContact() {
+    if (this.online) return false
+    if (this.contactGiven) return false
+
+    const email = this.hasEmailTarget ? this.emailTarget.value.trim() : ""
+    const phone = this.hasPhoneTarget ? this.phoneTarget.value.trim() : ""
+    return email === "" && phone === ""
   }
 
   renderAll(messages) {

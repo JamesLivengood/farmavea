@@ -20,6 +20,8 @@ class ChatsController < ApplicationController
     render json: {
       token: conversation.token,
       online: ChatStatus.online?,
+      # So a returning visitor who already left details is not asked again.
+      contact_given: conversation.visitor_email.present? || conversation.visitor_phone.present?,
       messages: conversation.messages.map { |m| serialize(m) }
     }
   end
@@ -44,9 +46,26 @@ class ChatsController < ApplicationController
     # Only stored when the visitor actually typed them; never inferred.
     email = params[:email].to_s.strip
     phone = params[:phone].to_s.strip
+
+    # Offline there is no way to answer someone who leaves no contact details -
+    # their message would sit unread and they would never learn why. Enforced here
+    # rather than only in the form, since the endpoint is public.
+    if requires_contact?(conversation, email, phone)
+      render json: {
+        error: "Ahora mismo no estamos en línea. Déjanos tu correo o teléfono y te respondemos en cuanto podamos.",
+        requires_contact: true
+      }, status: :unprocessable_entity
+      return
+    end
+
     conversation.visitor_email = email if email.present?
     conversation.visitor_phone = phone if phone.present?
-    conversation.save!
+
+    unless conversation.save
+      render json: { error: conversation.errors.full_messages.first || "Revisa tus datos." },
+             status: :unprocessable_entity
+      return
+    end
 
     message = conversation.messages.create!(author: "visitor", body: body)
     NotifyOperatorOfChatMessageJob.perform_later(message.id)
@@ -64,6 +83,16 @@ class ChatsController < ApplicationController
     return nil if token.blank?
 
     ChatConversation.find_by(token: token)
+  end
+
+  # Only for a brand-new conversation: once someone has left contact details, or is
+  # mid-conversation with an operator who has already replied, demanding them again
+  # on every message would be obstructive.
+  def requires_contact?(conversation, email, phone)
+    return false if ChatStatus.online?
+    return false if email.present? || phone.present?
+
+    conversation.visitor_email.blank? && conversation.visitor_phone.blank?
   end
 
   def rate_limited?(conversation)

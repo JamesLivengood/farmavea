@@ -1,6 +1,11 @@
 require "test_helper"
 
 class ChatsControllerTest < ActionDispatch::IntegrationTest
+  # These tests are about sending, rate limiting and reading messages back. The
+  # offline contact requirement is covered explicitly further down, so default to
+  # online here rather than having every unrelated test carry an email.
+  setup { ChatStatus.set!(true) }
+
   test "a first message creates a conversation and returns its token" do
     post chat_path, params: { body: "¿Tienen paracetamol más barato?" }, as: :json
 
@@ -67,11 +72,62 @@ class ChatsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "4431234567", ChatConversation.last.contact_line
   end
 
-  test "leaving no contact details is still allowed" do
+  test "leaving no contact details is allowed while someone is online to answer" do
+    ChatStatus.set!(true)
+
     post chat_path, params: { body: "¿Tienen omeprazol?" }, as: :json
 
     assert_response :created
     assert_equal "sin contacto", ChatConversation.last.contact_line
+  end
+
+  # Offline, a message with no way to reply is a dead end - the visitor would never
+  # learn why they heard nothing back.
+  test "offline, a message without contact details is refused" do
+    ChatStatus.set!(false)
+
+    post chat_path, params: { body: "¿Tienen omeprazol?" }, as: :json
+
+    assert_response :unprocessable_entity
+    assert JSON.parse(@response.body)["requires_contact"]
+    assert_equal 0, ChatConversation.count, "nothing should be stored for a refused message"
+  end
+
+  test "offline, an email alone is enough" do
+    ChatStatus.set!(false)
+
+    post chat_path, params: { body: "¿Tienen omeprazol?", email: "a@example.com" }, as: :json
+
+    assert_response :created
+  end
+
+  test "offline, a phone alone is enough" do
+    ChatStatus.set!(false)
+
+    post chat_path, params: { body: "¿Tienen omeprazol?", phone: "4431234567" }, as: :json
+
+    assert_response :created
+  end
+
+  # Once details are on file, asking again on every message would be obstructive.
+  test "offline, a follow-up needs no details when the conversation already has them" do
+    ChatStatus.set!(false)
+    post chat_path, params: { body: "Primera", email: "a@example.com" }, as: :json
+    token = JSON.parse(@response.body)["token"]
+
+    post chat_path, params: { token: token, body: "Segunda" }, as: :json
+
+    assert_response :created
+    assert_equal 2, ChatConversation.find_by(token: token).messages.count
+  end
+
+  test "a malformed email is rejected with a readable message" do
+    ChatStatus.set!(true)
+
+    post chat_path, params: { body: "¿Tienen omeprazol?", email: "no-es-un-correo" }, as: :json
+
+    assert_response :unprocessable_entity
+    assert JSON.parse(@response.body)["error"].present?
   end
 
   # A visitor deciding whether to type needs to know if anyone is there, before any

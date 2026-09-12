@@ -66,18 +66,20 @@
       </label>
 
       <div data-chat-target="contactRow" class="space-y-1.5">
-        <p data-chat-target="contactPrompt" class="text-[11px] text-slate-500 hidden">
-          Déjanos tu correo o teléfono y te contactamos en cuanto podamos.
+        <%# Offline these stop being optional: without one there is no way to answer.
+            The label and placeholders are switched by the chat controller. %>
+        <p data-chat-target="contactPrompt" class="text-[11px] text-amber-700 bg-amber-50 rounded-md px-2 py-1.5 hidden">
+          No estamos en línea ahora. Déjanos tu correo <strong>o</strong> teléfono para poder responderte.
         </p>
         <label class="block">
-          <span class="sr-only">Tu correo (opcional)</span>
+          <span class="sr-only">Tu correo</span>
           <input type="email"
                  data-chat-target="email"
                  placeholder="Tu correo (opcional)"
                  class="w-full text-xs rounded-lg border border-slate-200 px-3 py-1.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none">
         </label>
         <label class="block">
-          <span class="sr-only">Tu teléfono (opcional)</span>
+          <span class="sr-only">Tu teléfono</span>
           <input type="tel"
                  data-chat-target="phone"
                  placeholder="Tu teléfono o WhatsApp (opcional)"
