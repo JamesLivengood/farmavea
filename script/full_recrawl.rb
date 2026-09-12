@@ -13,7 +13,39 @@ only = ENV["ONLY"].to_s.split(",").map(&:strip).reject(&:empty?)
 pharmacies = only.any? ? Pharmacy.active.where(slug: only) : Pharmacy.active
 abort "No pharmacies matched #{only.inspect}" if pharmacies.empty?
 
+# In production this shares one small machine with the web server, and the
+# browser-driven crawlers are heavy enough to make the site unresponsive. Crawling
+# everything at once there has to be asked for explicitly.
+if Rails.env.production? && only.empty? && ENV["CRAWL_ALL"].blank?
+  abort <<~MSG
+    Refusing to crawl all #{pharmacies.count} pharmacies in production: the headless
+    browser competes with the web server for memory and the site goes slow.
+
+    Crawl a few at a time:   ONLY=guadalajara bin/rails runner script/full_recrawl.rb
+    Or override deliberately: CRAWL_ALL=1 bin/rails runner script/full_recrawl.rb
+  MSG
+end
+
 log = ->(msg) { puts "[#{Time.current.strftime('%H:%M:%S')}] #{msg}"; $stdout.flush }
+
+# A crawl that is killed (or whose SSH session drops) leaves its headless browser
+# running: Ferrum's own cleanup is in an `ensure`, which SIGKILL skips. Those
+# orphans then hold hundreds of MB and make the site slow. Sweep any strays from a
+# previous run before starting, and leave a crawl_run marked `running` from a dead
+# process in a sane state.
+if Rails.env.production?
+  orphans = `pgrep -f chromium 2>/dev/null`.split.size
+  if orphans.positive?
+    log.call "cleaning up #{orphans} orphaned browser processes from a previous run"
+    system("pkill -9 chromium")
+  end
+end
+
+stale = CrawlRun.where(status: "running").where(created_at: ..2.hours.ago)
+if stale.any?
+  log.call "marking #{stale.count} abandoned crawl_runs as failed"
+  stale.each { |r| RawListing.where(crawl_run: r).empty? ? r.destroy : r.update!(status: "failed", finished_at: Time.current) }
+end
 
 log.call "Recrawling #{pharmacies.count} pharmacies"
 puts "=" * 74
