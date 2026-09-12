@@ -4,7 +4,10 @@
   <%= link_to "← Todas las conversaciones", admin_chats_path,
         class: "text-sm text-slate-500 hover:text-emerald-600" %>
 
-  <div class="mt-4 bg-white border border-slate-200 rounded-xl overflow-hidden">
+  <div data-controller="admin-chat"
+       data-admin-chat-endpoint-value="<%= chat_path %>"
+       data-admin-chat-token-value="<%= @conversation.token %>"
+       class="mt-4 bg-white border border-slate-200 rounded-xl overflow-hidden">
     <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
       <p class="text-sm font-semibold text-slate-900">
         <%= @conversation.visitor_email.presence || "Visitante sin correo" %>
@@ -14,9 +17,9 @@
       </p>
     </div>
 
-    <div class="p-5 space-y-3">
+    <div data-admin-chat-target="log" class="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
       <% @conversation.messages.each do |message| %>
-        <div class="flex <%= message.visitor? ? "justify-start" : "justify-end" %>">
+        <div data-message class="flex <%= message.visitor? ? "justify-start" : "justify-end" %>">
           <div class="<%= message.visitor? ? "bg-slate-100 text-slate-800" : "bg-emerald-600 text-white" %> rounded-2xl px-3.5 py-2 max-w-[80%]">
             <p class="text-sm whitespace-pre-wrap break-words"><%= message.body %></p>
             <p class="<%= message.visitor? ? "text-slate-400" : "text-emerald-100" %> text-[10px] mt-1">

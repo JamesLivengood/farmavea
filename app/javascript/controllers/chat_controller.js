@@ -6,7 +6,10 @@ import { Controller } from "@hotwired/stimulus"
 // Polling only runs while the panel is open, so a page left in a tab does not sit
 // hitting the server all day.
 const TOKEN_KEY = "farmavea.chat.token"
-const POLL_MS = 15000
+// Open panel: frequent enough that a reply feels live. Closed panel: still polled,
+// just slowly, so a badge appears without the visitor having to reload the page.
+const POLL_MS_OPEN = 5000
+const POLL_MS_CLOSED = 30000
 
 export default class extends Controller {
   static targets = ["panel", "button", "label", "badge", "log", "empty",
@@ -17,10 +20,19 @@ export default class extends Controller {
     this.token = this.readToken()
     this.pollTimer = null
     this.renderedCount = 0
+    // What the visitor has actually looked at, as opposed to what is in the DOM -
+    // messages render into the closed panel too, so renderedCount alone would clear
+    // the badge before it was ever seen.
+    this.seenCount = 0
     this.boundEscape = this.closeIfEscape.bind(this)
 
-    // A returning visitor may have a reply waiting - check once without opening.
-    if (this.token) this.load({ quiet: true })
+    // A returning visitor may have a reply waiting - check once without opening,
+    // then keep polling slowly so a reply that arrives while they are reading the
+    // page still surfaces without a refresh.
+    if (this.token) {
+      this.load({ quiet: true })
+      this.startPolling()
+    }
   }
 
   disconnect() {
@@ -39,6 +51,8 @@ export default class extends Controller {
     this.buttonTarget.setAttribute("aria-expanded", "true")
     this.labelTarget.textContent = "Cerrar"
     this.badgeTarget.hidden = true
+    // Opening the panel means everything currently rendered has now been seen.
+    this.seenCount = this.renderedCount
     this.messageTarget.focus()
     document.addEventListener("keydown", this.boundEscape)
     if (this.token) this.load()
@@ -50,7 +64,9 @@ export default class extends Controller {
     this.buttonTarget.setAttribute("aria-expanded", "false")
     this.labelTarget.textContent = "Pregúntanos"
     document.removeEventListener("keydown", this.boundEscape)
-    this.stopPolling()
+    // Keep polling, just slowly - closing the panel should not stop a reply from
+    // arriving, it should only change how loudly it announces itself.
+    this.startPolling()
   }
 
   closeIfEscape(event) {
@@ -103,6 +119,7 @@ export default class extends Controller {
       this.writeToken(data.token)
       this.messageTarget.value = ""
       this.appendMessage(data.message)
+      this.seenCount = this.renderedCount
       this.statusTarget.textContent = "Mensaje enviado. Te responderemos en cuanto podamos."
       // The email is only needed once per conversation.
       if (this.hasEmailRowTarget && this.emailTarget.value.trim() !== "") {
@@ -129,9 +146,11 @@ export default class extends Controller {
       const data = await response.json()
       const messages = data.messages || []
 
-      // A reply arrived while the panel was shut - badge the button.
-      if (quiet && messages.length > this.renderedCount) {
-        const unseen = messages.slice(this.renderedCount).filter((m) => m.author === "operator")
+      // A reply arrived while the panel was shut - badge the button. Counted
+      // against everything the visitor has actually seen, not just this poll, so
+      // several replies in a row accumulate rather than resetting to 1.
+      if (quiet && messages.length > this.seenCount) {
+        const unseen = messages.slice(this.seenCount).filter((m) => m.author === "operator")
         if (unseen.length > 0) {
           this.badgeTarget.textContent = unseen.length
           this.badgeTarget.hidden = false
@@ -146,10 +165,15 @@ export default class extends Controller {
 
   renderAll(messages) {
     if (messages.length === 0) return
+    // Nothing new - avoid tearing down and rebuilding the log on every poll, which
+    // would fight the user's scroll position and any text selection.
+    if (messages.length === this.renderedCount) return
 
     this.logTarget.innerHTML = ""
     messages.forEach((m) => this.appendMessage(m, { skipCount: true }))
     this.renderedCount = messages.length
+    // With the panel open the visitor is looking at these as they arrive.
+    if (!this.panelTarget.hidden) this.seenCount = messages.length
   }
 
   appendMessage(message, { skipCount = false } = {}) {
@@ -176,7 +200,12 @@ export default class extends Controller {
   startPolling() {
     this.stopPolling()
     if (!this.token) return
-    this.pollTimer = setInterval(() => this.load(), POLL_MS)
+
+    const open = !this.panelTarget.hidden
+    const interval = open ? POLL_MS_OPEN : POLL_MS_CLOSED
+    // `quiet` when closed, so a reply badges the button instead of silently
+    // rendering into a panel nobody is looking at.
+    this.pollTimer = setInterval(() => this.load({ quiet: !open }), interval)
   }
 
   stopPolling() {
