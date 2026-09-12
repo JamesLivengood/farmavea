@@ -3,9 +3,10 @@ import { Controller } from "@hotwired/stimulus"
 // On-site chat. The conversation token lives in localStorage so a returning visitor
 // sees the operator's reply; it identifies the thread, not the person.
 //
-// Polling only runs while the panel is open, so a page left in a tab does not sit
-// hitting the server all day.
+// Polling runs whether or not the panel is open - just slower when closed - because
+// a reply that only appears after a manual refresh may as well not have arrived.
 const TOKEN_KEY = "farmavea.chat.token"
+const SEEN_KEY = "farmavea.chat.seen"
 // Open panel: frequent enough that a reply feels live. Closed panel: still polled,
 // just slowly, so a badge appears without the visitor having to reload the page.
 const POLL_MS_OPEN = 5000
@@ -23,8 +24,25 @@ export default class extends Controller {
     // What the visitor has actually looked at, as opposed to what is in the DOM -
     // messages render into the closed panel too, so renderedCount alone would clear
     // the badge before it was ever seen.
-    this.seenCount = 0
+    //
+    // Persisted because navigating to another page tears the controller down and
+    // builds a new one: starting from 0 would re-badge every message they had
+    // already read on the previous page.
+    this.seenCount = this.readSeenCount()
     this.boundEscape = this.closeIfEscape.bind(this)
+    // Mobile browsers throttle or suspend timers in a background tab, and some kill
+    // them outright - so a phone left on the page can come back with a dead poller.
+    // Fetching on refocus is what makes a reply appear without a manual refresh.
+    this.boundVisibility = () => {
+      if (document.hidden) return
+      this.load({ quiet: this.panelTarget.hidden })
+      this.startPolling()
+    }
+    document.addEventListener("visibilitychange", this.boundVisibility)
+    window.addEventListener("focus", this.boundVisibility)
+    // Turbo restores pages from its cache without re-running connect(), so a
+    // back-navigation would otherwise show a stale log with no poller running.
+    document.addEventListener("turbo:load", this.boundVisibility)
 
     // A returning visitor may have a reply waiting - check once without opening,
     // then keep polling slowly so a reply that arrives while they are reading the
@@ -38,6 +56,9 @@ export default class extends Controller {
   disconnect() {
     this.stopPolling()
     document.removeEventListener("keydown", this.boundEscape)
+    document.removeEventListener("visibilitychange", this.boundVisibility)
+    window.removeEventListener("focus", this.boundVisibility)
+    document.removeEventListener("turbo:load", this.boundVisibility)
   }
 
   // --- open / close -------------------------------------------------------
@@ -53,6 +74,7 @@ export default class extends Controller {
     this.badgeTarget.hidden = true
     // Opening the panel means everything currently rendered has now been seen.
     this.seenCount = this.renderedCount
+    this.writeSeenCount(this.seenCount)
     this.messageTarget.focus()
     document.addEventListener("keydown", this.boundEscape)
     if (this.token) this.load()
@@ -120,6 +142,7 @@ export default class extends Controller {
       this.messageTarget.value = ""
       this.appendMessage(data.message)
       this.seenCount = this.renderedCount
+      this.writeSeenCount(this.seenCount)
       this.statusTarget.textContent = "Mensaje enviado. Te responderemos en cuanto podamos."
       // The email is only needed once per conversation.
       if (this.hasEmailRowTarget && this.emailTarget.value.trim() !== "") {
@@ -173,7 +196,10 @@ export default class extends Controller {
     messages.forEach((m) => this.appendMessage(m, { skipCount: true }))
     this.renderedCount = messages.length
     // With the panel open the visitor is looking at these as they arrive.
-    if (!this.panelTarget.hidden) this.seenCount = messages.length
+    if (!this.panelTarget.hidden) {
+      this.seenCount = messages.length
+      this.writeSeenCount(this.seenCount)
+    }
   }
 
   appendMessage(message, { skipCount = false } = {}) {
@@ -230,6 +256,22 @@ export default class extends Controller {
       window.localStorage.setItem(TOKEN_KEY, token)
     } catch (error) {
       // Chat still works for this page view; the thread just is not resumed later.
+    }
+  }
+
+  readSeenCount() {
+    try {
+      return parseInt(window.localStorage.getItem(SEEN_KEY) || "0", 10) || 0
+    } catch (error) {
+      return 0
+    }
+  }
+
+  writeSeenCount(count) {
+    try {
+      window.localStorage.setItem(SEEN_KEY, String(count))
+    } catch (error) {
+      // Worst case the badge reappears for a message already read.
     }
   }
 
