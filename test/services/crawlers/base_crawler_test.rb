@@ -161,6 +161,24 @@ module Crawlers
         "these crawlers bypass http_get and so have no connection timeout"
     end
 
+    # Bot mitigation reads an outdated browser version as a bot signal in itself.
+    # Farmalisto's Cloudflare started returning 403 to the pinned Chrome/124 while
+    # letting Chrome/130+ through, and the crawler quietly returned nothing for over
+    # a week. A stale version here is a real outage, not a cosmetic detail.
+    test "the user agent claims a recent Chrome version" do
+      version = Crawlers::BaseCrawler::USER_AGENT[%r{Chrome/(\d+)}, 1].to_i
+
+      assert_operator version, :>=, 130,
+        "sites have been observed blocking Chrome/124 and older - bump CHROME_VERSION"
+    end
+
+    test "the user agent is a single well-formed line" do
+      ua = Crawlers::BaseCrawler::USER_AGENT
+
+      assert_match(%r{\AMozilla/5\.0 .+ Chrome/\d+\.\d+\.\d+\.\d+ Safari/[\d.]+\z}, ua)
+      assert_not_includes ua, "\n"
+    end
+
     private
 
     def fake_crawler

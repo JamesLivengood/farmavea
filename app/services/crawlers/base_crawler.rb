@@ -5,8 +5,17 @@ module Crawlers
   # Common headless-browser plumbing for pharmacy crawlers. Subclasses implement
   # #fetch_listings and return an array of { raw_name:, price_cents:, presentation_text:, product_url: }.
   class BaseCrawler
+    # Bot mitigation treats an outdated browser version as a signal in its own
+    # right: Farmalisto's Cloudflare began returning 403 to Chrome/124 while letting
+    # Chrome/130+ through, which silently broke that crawler for over a week. The
+    # version therefore has to be kept current - it is not cosmetic.
+    #
+    # Override with CRAWLER_CHROME_VERSION when a site starts refusing this one; the
+    # default tracks roughly the current stable Chrome.
+    CHROME_VERSION = ENV.fetch("CRAWLER_CHROME_VERSION", "150")
+
     USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " \
-                 "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                 "(KHTML, like Gecko) Chrome/#{CHROME_VERSION}.0.0.0 Safari/537.36"
 
     class CrawlError < StandardError; end
 
