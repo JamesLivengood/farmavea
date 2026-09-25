@@ -71,3 +71,4 @@ bin/rails runner 'Crawlers::DelAhorroCrawler.new(pharmacy: Pharmacy.find_by(slug
 A headless Chrome or Chromium binary is required for the browser-driven crawlers;
 `Crawlers::BaseCrawler::BROWSER_PATHS` lists where it is looked for, and
 `FERRUM_BROWSER_PATH` overrides it.
+# farmavea
